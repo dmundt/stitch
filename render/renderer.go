@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	_ "embed"
 	"errors"
 	"html/template"
 	"sync"
@@ -10,24 +11,8 @@ import (
 	stitchtpl "github.com/dmundt/stitch/template"
 )
 
-const documentTemplate = `<!doctype html>
-<html lang="{{.Lang}}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{.Title}}</title>
-{{.ProviderHead}}
-{{range .Head}}{{.}}
-{{end}}</head>
-<body>
-<div class="stitch-page">
-<header>{{range .Header}}{{.}}{{end}}</header>
-<main>{{range .Main}}{{.}}{{end}}</main>
-<footer>{{range .Footer}}{{.}}{{end}}</footer>
-</div>
-</body>
-</html>
-`
+//go:embed templates/document.gohtml
+var documentTemplate string
 
 var (
 	docTemplate   = template.Must(template.New("doc").Parse(documentTemplate))
@@ -40,6 +25,7 @@ type HTMLComponent interface {
 	HTML() string
 }
 
+// Page represents a composable HTML document model.
 type Page struct {
 	Title    string
 	Lang     string
@@ -57,6 +43,7 @@ type documentData struct {
 	Footer       []template.HTML
 }
 
+// NewPage returns a Page with a default language and composer.
 func NewPage(title string) *Page {
 	return &Page{
 		Title:    title,
@@ -71,11 +58,12 @@ func NewWindow(title string) *Page {
 	return NewPage(title)
 }
 
+// AddHead appends trusted HTML to the document head.
 func (p *Page) AddHead(html template.HTML) {
 	p.Head = append(p.Head, html)
 }
 
-// AddHeadRaw appends raw HTML to <head> and escapes no content.
+// AddHeadRaw appends raw HTML to <head> and does not escape content.
 // Use for trusted static fragments such as meta tags and inline style blocks.
 func (p *Page) AddHeadRaw(raw string) {
 	p.Head = append(p.Head, template.HTML(raw))
@@ -165,6 +153,7 @@ func (p *Page) WithHeadRaw(raw string) {
 	p.Head = append(p.Head, template.HTML(raw))
 }
 
+// Render renders page to a full HTML document string.
 func Render(page *Page, provider css.Provider) (string, error) {
 	if page == nil {
 		return "", errors.New("page is nil")
@@ -199,4 +188,3 @@ func Render(page *Page, provider css.Provider) (string, error) {
 	}
 	return b.String(), nil
 }
-
