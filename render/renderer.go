@@ -11,7 +11,7 @@ import (
 	stitchtpl "github.com/dmundt/stitch/template"
 )
 
-//go:embed templates/document.gohtml
+//go:embed document.gohtml
 var documentTemplate string
 
 var (
