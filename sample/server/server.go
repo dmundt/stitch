@@ -12,6 +12,7 @@ import (
 	"github.com/dmundt/stitch/ui"
 )
 
+// BuildDemoPage renders the sample showcase page for providerName.
 func BuildDemoPage(providerName string) (string, error) {
 	provider, err := css.Get(providerName)
 	if err != nil {
@@ -187,6 +188,7 @@ func BuildDemoPage(providerName string) (string, error) {
 	return page.Render(provider)
 }
 
+// NewHandler returns the demo HTTP handler.
 func NewHandler() http.Handler {
 	mux := http.NewServeMux()
 	assets, err := css.Assets()
