@@ -1,0 +1,17 @@
+{{define "appshell"}}{{if .HasSidebar}}<section class="app-shell"><aside class="app-shell-sidebar">{{.Sidebar}}</aside><section class="app-shell-content">{{.Content}}</section></section>{{else}}<section class="app-shell app-shell-single"><section class="app-shell-content">{{.Content}}</section></section>{{end}}{{end}}
+
+{{define "container"}}<div class="container">{{range .Children}}{{.}}{{end}}</div>{{end}}
+
+{{define "containerfluid"}}<div class="container-fluid">{{range .Children}}{{.}}{{end}}</div>{{end}}
+
+{{define "stack"}}<div class="{{.Class}}">{{range .Children}}{{.}}{{end}}</div>{{end}}
+
+{{define "cluster"}}<div class="{{.Class}}">{{range .Children}}{{.}}{{end}}</div>{{end}}
+
+{{define "hero"}}<section class="hero"><h1>{{.Title}}</h1>{{if .Subtitle}}<p>{{.Subtitle}}</p>{{end}}{{if .Actions}}<div class="cluster hero-actions">{{range .Actions}}{{.}}{{end}}</div>{{end}}</section>{{end}}
+
+{{define "split"}}<section class="split"><div class="split-primary">{{.Primary}}</div><div class="split-secondary">{{.Secondary}}</div></section>{{end}}
+
+{{define "sidebarLayout"}}<div class="layout-sidebar-main"><aside class="layout-sidebar">{{.Sidebar}}</aside><main class="layout-main">{{.Content}}</main></div>{{end}}
+
+{{define "themetoggle"}}<label class="theme-toggle" for="theme-toggle" title="Toggle dark / light mode"><input type="checkbox" id="theme-toggle"><span aria-hidden="true">☀︎ ╱ ☾</span></label>{{end}}

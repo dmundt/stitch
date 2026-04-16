@@ -1,0 +1,13 @@
+{{define "form"}}<form action="{{.Action}}" method="{{.Method}}">{{range .Children}}{{.}}{{end}}</form>{{end}}
+
+{{define "fieldset"}}<fieldset><legend>{{.Legend}}</legend>{{range .Children}}{{.}}{{end}}</fieldset>{{end}}
+
+{{define "input"}}<label>{{.Label}}<input name="{{.Name}}" placeholder="{{.Placeholder}}"></label>{{end}}
+
+{{define "select"}}<label>{{.Label}}<select name="{{.Name}}">{{range .Options}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>{{end}}
+
+{{define "textarea"}}<label>{{.Label}}<textarea name="{{.Name}}" placeholder="{{.Placeholder}}"></textarea></label>{{end}}
+
+{{define "checkbox"}}<label><input type="checkbox" name="{{.Name}}" value="{{.Value}}"{{if .Checked}} checked{{end}}>{{.Label}}</label>{{end}}
+
+{{define "radio"}}<label><input type="radio" name="{{.Name}}" value="{{.Value}}"{{if .Checked}} checked{{end}}>{{.Label}}</label>{{end}}

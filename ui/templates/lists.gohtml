@@ -1,0 +1,5 @@
+{{define "list"}}<ul>{{range .Items}}<li>{{.}}</li>{{end}}</ul>{{end}}
+
+{{define "orderedlist"}}<ol>{{range .Items}}<li>{{.}}</li>{{end}}</ol>{{end}}
+
+{{define "descriptionlist"}}<dl>{{range .Items}}<dt>{{.Term}}</dt><dd>{{.Definition}}</dd>{{end}}</dl>{{end}}

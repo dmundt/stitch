@@ -1,0 +1,11 @@
+{{define "paragraph"}}<p>{{.Text}}</p>{{end}}
+
+{{define "heading"}}{{if eq .Level 1}}<h1>{{.Text}}</h1>{{else if eq .Level 2}}<h2>{{.Text}}</h2>{{else if eq .Level 3}}<h3>{{.Text}}</h3>{{else if eq .Level 4}}<h4>{{.Text}}</h4>{{else if eq .Level 5}}<h5>{{.Text}}</h5>{{else}}<h6>{{.Text}}</h6>{{end}}{{end}}
+
+{{define "blockquote"}}<blockquote><p>{{.Text}}</p>{{if .Cite}}<cite>{{.Cite}}</cite>{{end}}</blockquote>{{end}}
+
+{{define "codeblock"}}<pre><code>{{.Code}}</code></pre>{{end}}
+
+{{define "image"}}<img src="{{.Src}}" alt="{{.Alt}}">{{end}}
+
+{{define "horizontalrule"}}<hr>{{end}}
