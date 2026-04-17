@@ -5,6 +5,12 @@ import (
 	"testing"
 )
 
+type fixedIDRootComponent struct{}
+
+func (fixedIDRootComponent) HTML() string {
+	return `<div id="existing">x</div>`
+}
+
 func assertContains(t *testing.T, html, want string) {
 	t.Helper()
 	if !strings.Contains(html, want) {
@@ -307,4 +313,27 @@ func TestInteractiveWrappers(t *testing.T) {
 	mHTML := menu.HTML()
 	assertContains(t, mHTML, `hx-get="/provider/stitch"`)
 	assertContains(t, mHTML, `hx-target="#provider-status"`)
+}
+
+func TestWithIDWrapsTemplateComponent(t *testing.T) {
+	h := WithID("hero-main", NewHero("Title", "Sub", nil)).HTML()
+	assertContains(t, h, `<section`)
+	assertContains(t, h, `id="hero-main"`)
+	assertContains(t, h, `class="hero"`)
+}
+
+func TestWithIDWrapsHTMXComponent(t *testing.T) {
+	ix := Interaction{Get: "/provider/stitch", Target: "#provider-status"}
+	h := WithID("menu-root", NewInteractiveMenu([]InteractiveMenuLink{{Label: "R", Href: "#", Interaction: ix}})).HTML()
+	assertContains(t, h, `<nav id="menu-root">`)
+}
+
+func TestWithIDDoesNotDuplicateExistingID(t *testing.T) {
+	h := WithID("outer-id", fixedIDRootComponent{}).HTML()
+	if strings.Count(h, `id="existing"`) != 1 {
+		t.Fatalf("expected existing id to be preserved once, got: %s", h)
+	}
+	if strings.Contains(h, `id="outer-id"`) {
+		t.Fatalf("expected wrapper id to be skipped when root already has id, got: %s", h)
+	}
 }

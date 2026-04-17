@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"html"
 	"html/template"
 	"strings"
 
@@ -14,6 +15,112 @@ import (
 // HTML when composing nested structures.
 type Component interface {
 	HTML() string
+}
+
+// WithID wraps any component and injects an id attribute on the root element.
+// If id is blank, the original component is returned unchanged.
+func WithID(id string, child Component) Component {
+	id = strings.TrimSpace(id)
+	if id == "" || child == nil {
+		return child
+	}
+	return &idComponent{ID: id, Child: child}
+}
+
+type idComponent struct {
+	ID    string
+	Child Component
+}
+
+func (c *idComponent) HTML() string {
+	return injectIDAttribute(c.Child.HTML(), c.ID)
+}
+
+func injectIDAttribute(fragment, id string) string {
+	if fragment == "" || strings.TrimSpace(id) == "" {
+		return fragment
+	}
+	search := 0
+	for search < len(fragment) {
+		idx := strings.Index(fragment[search:], "<")
+		if idx < 0 {
+			return fragment
+		}
+		start := search + idx
+		if start+1 >= len(fragment) {
+			return fragment
+		}
+		next := fragment[start+1]
+		if next == '/' || next == '!' || next == '?' {
+			search = start + 1
+			continue
+		}
+
+		end := findTagEnd(fragment, start+1)
+		if end < 0 {
+			return fragment
+		}
+
+		tag := fragment[start:end]
+		if hasIDAttribute(tag) {
+			return fragment
+		}
+
+		insertAt := end
+		if end > start && fragment[end-1] == '/' {
+			insertAt = end - 1
+		}
+		attr := ` id="` + html.EscapeString(id) + `"`
+		return fragment[:insertAt] + attr + fragment[insertAt:]
+	}
+	return fragment
+}
+
+func findTagEnd(s string, from int) int {
+	quote := byte(0)
+	for i := from; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == '\'' || c == '"' {
+			quote = c
+			continue
+		}
+		if c == '>' {
+			return i
+		}
+	}
+	return -1
+}
+
+func hasIDAttribute(openTag string) bool {
+	lower := strings.ToLower(openTag)
+	for i := 0; i < len(lower); i++ {
+		if lower[i] != 'i' {
+			continue
+		}
+		if i+1 >= len(lower) || lower[i+1] != 'd' {
+			continue
+		}
+		if i > 0 {
+			prev := lower[i-1]
+			if (prev >= 'a' && prev <= 'z') || prev == '-' || prev == '_' {
+				continue
+			}
+		}
+		j := i + 2
+		for j < len(lower) && (lower[j] == ' ' || lower[j] == '\t' || lower[j] == '\n' || lower[j] == '\r') {
+			j++
+		}
+		if j < len(lower) && lower[j] == '=' {
+			return true
+		}
+	}
+	return false
 }
 
 // HTML renders alert markup with a default "info" tone when unset.

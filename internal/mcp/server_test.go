@@ -248,10 +248,18 @@ func TestHeadSnippetValidationAndProviderValidation(t *testing.T) {
 
 	_, err := a.safeDispatch("page.set_head_snippet", map[string]any{
 		"session_id": sessionID,
+		"snippet":    "<script src=\"https://cdn.example.com/app.js\"></script>",
+	})
+	if err != nil {
+		t.Fatalf("expected external script head snippet to be allowed: %v", err)
+	}
+
+	_, err = a.safeDispatch("page.set_head_snippet", map[string]any{
+		"session_id": sessionID,
 		"snippet":    "<script>alert(1)</script>",
 	})
 	if err == nil {
-		t.Fatal("expected script head snippet to be rejected")
+		t.Fatal("expected inline script head snippet to be rejected")
 	}
 
 	_, err = a.safeDispatch("page.set_head_snippet", map[string]any{
@@ -397,6 +405,55 @@ func TestSessionReset(t *testing.T) {
 	if len(components) != 0 {
 		t.Fatalf("expected empty components after reset, got %d", len(components))
 	}
+
+	res, err := a.safeDispatch("session.get", map[string]any{"session_id": sessionID})
+	if err != nil {
+		t.Fatalf("session.get after reset failed: %v", err)
+	}
+	s := res["session"].(*sessionState)
+	if len(s.Page.HeadSnippets) != len(defaultHeadSnippets()) {
+		t.Fatalf("expected %d default head snippets after reset, got %d", len(defaultHeadSnippets()), len(s.Page.HeadSnippets))
+	}
+	for i, want := range defaultHeadSnippets() {
+		if s.Page.HeadSnippets[i] != want {
+			t.Fatalf("head snippet mismatch at %d: want %q, got %q", i, want, s.Page.HeadSnippets[i])
+		}
+	}
+}
+
+func TestRenderFullIncludesScriptSrcAndComponentID(t *testing.T) {
+	a := newApp()
+	sessionID := mustCreateSession(t, a)
+
+	_, err := a.safeDispatch("page.set_head_snippet", map[string]any{
+		"session_id": sessionID,
+		"snippet":    "<script src=\"https://cdn.example.com/extra.js\"></script>",
+	})
+	if err != nil {
+		t.Fatalf("page.set_head_snippet failed: %v", err)
+	}
+
+	_, err = a.safeDispatch("ui.create_component", map[string]any{
+		"session_id": sessionID,
+		"type":       "paragraph",
+		"props":      map[string]any{"text": "Body", "id": "main-content"},
+		"block":      "main",
+	})
+	if err != nil {
+		t.Fatalf("ui.create_component failed: %v", err)
+	}
+
+	renderRes, err := a.safeDispatch("render.full", map[string]any{"session_id": sessionID})
+	if err != nil {
+		t.Fatalf("render.full failed: %v", err)
+	}
+	html := renderRes["html"].(string)
+	if !strings.Contains(html, `<script src="https://cdn.example.com/extra.js"></script>`) {
+		t.Fatalf("expected external script tag in rendered html: %s", html)
+	}
+	if !strings.Contains(html, `<p id="main-content">Body</p>`) {
+		t.Fatalf("expected paragraph id in rendered html: %s", html)
+	}
 }
 
 func TestSessionGet(t *testing.T) {
@@ -503,6 +560,31 @@ func TestSchemaGetComponentFields(t *testing.T) {
 	}
 	if res["type"] != "heading" {
 		t.Fatalf("expected type 'heading', got %v", res["type"])
+	}
+	schema := res["schema"].(map[string]any)
+	props := schema["props"].([]string)
+	hasID := false
+	for _, p := range props {
+		if p == "id" {
+			hasID = true
+			break
+		}
+	}
+	if !hasID {
+		t.Fatalf("expected heading schema props to include id, got %v", props)
+	}
+}
+
+func TestSchemaGetComponentFieldsIncludesIDForEmptyPropsType(t *testing.T) {
+	a := newApp()
+	res, err := a.safeDispatch("schema.get_component_fields", map[string]any{"type": "theme_toggle"})
+	if err != nil {
+		t.Fatalf("schema.get_component_fields failed: %v", err)
+	}
+	schema := res["schema"].(map[string]any)
+	props := schema["props"].([]string)
+	if len(props) != 1 || props[0] != "id" {
+		t.Fatalf("expected theme_toggle schema props to be [id], got %v", props)
 	}
 }
 

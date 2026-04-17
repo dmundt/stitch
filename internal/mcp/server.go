@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/dmundt/stitch/css"
-	"github.com/dmundt/stitch/htmx"
 	"github.com/dmundt/stitch/render"
 	stitchtpl "github.com/dmundt/stitch/template"
 	"github.com/dmundt/stitch/ui"
@@ -120,7 +119,7 @@ func (a *app) dispatchTool(name string, args map[string]any) (map[string]any, er
 		session, err := a.store.updateSession(sessionID, func(s *sessionState) error {
 			s.Components = map[string]*componentNode{}
 			s.Blocks = map[string][]string{stitchtpl.BlockHeader: {}, stitchtpl.BlockMain: {}, stitchtpl.BlockFooter: {}}
-			s.Page.HeadSnippets = []string{string(htmx.Head())}
+			s.Page.HeadSnippets = defaultHeadSnippets()
 			return nil
 		})
 		if err != nil {
@@ -536,7 +535,14 @@ func (a *app) buildComponent(session *sessionState, componentID string) (ui.Comp
 	if !ok {
 		return nil, fmt.Errorf("unknown component_id: %s", componentID)
 	}
-	return a.buildNode(session, node)
+	comp, err := a.buildNode(session, node)
+	if err != nil {
+		return nil, err
+	}
+	if id := asString(node.Props["id"]); strings.TrimSpace(id) != "" {
+		comp = ui.WithID(id, comp)
+	}
+	return comp, nil
 }
 
 func (a *app) buildNode(session *sessionState, node *componentNode) (ui.Component, error) {
@@ -665,12 +671,11 @@ func (a *app) buildNode(session *sessionState, node *componentNode) (ui.Componen
 func (a *app) buildChildren(session *sessionState, childIDs []string) ([]ui.Component, error) {
 	out := make([]ui.Component, 0, len(childIDs))
 	for _, childID := range childIDs {
-		node, ok := session.Components[childID]
-		if !ok {
-			return nil, fmt.Errorf("missing child component: %s", childID)
-		}
-		comp, err := a.buildNode(session, node)
+		comp, err := a.buildComponent(session, childID)
 		if err != nil {
+			if strings.Contains(err.Error(), "unknown component_id") {
+				return nil, fmt.Errorf("missing child component: %s", childID)
+			}
 			return nil, err
 		}
 		out = append(out, comp)
@@ -679,17 +684,35 @@ func (a *app) buildChildren(session *sessionState, childIDs []string) ([]ui.Comp
 }
 
 func validateHeadSnippet(snippet string) error {
-	trimmed := strings.TrimSpace(strings.ToLower(snippet))
+	trimmed := strings.TrimSpace(snippet)
 	if trimmed == "" {
 		return errors.New("head snippet is empty")
 	}
-	if strings.Contains(trimmed, "<script") {
-		return errors.New("script tags are not allowed in head snippets")
-	}
-	if strings.HasPrefix(trimmed, "<meta") || strings.HasPrefix(trimmed, "<link") || strings.HasPrefix(trimmed, "<style") {
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "<script") {
+		closeTag := "</script>"
+		closeIdx := strings.LastIndex(lower, closeTag)
+		if closeIdx < 0 {
+			return errors.New("script head snippet must be a complete <script ...></script> tag")
+		}
+		openEnd := strings.Index(trimmed, ">")
+		if openEnd < 0 || openEnd > closeIdx {
+			return errors.New("script head snippet must be a complete <script ...></script> tag")
+		}
+		openTag := trimmed[:openEnd+1]
+		if !strings.Contains(strings.ToLower(openTag), "src=") {
+			return errors.New("script head snippet must include a src attribute")
+		}
+		inlineBody := strings.TrimSpace(trimmed[openEnd+1 : closeIdx])
+		if inlineBody != "" {
+			return errors.New("inline script bodies are not allowed in head snippets")
+		}
 		return nil
 	}
-	return errors.New("head snippet must start with <meta, <link, or <style")
+	if strings.HasPrefix(lower, "<meta") || strings.HasPrefix(lower, "<link") || strings.HasPrefix(lower, "<style") {
+		return nil
+	}
+	return errors.New("head snippet must start with <meta, <link, <style, or <script src=...>")
 }
 
 func randomID(prefix string) string {
@@ -975,7 +998,7 @@ func hasComponentSchema(typeName string) bool {
 }
 
 func componentSchemas() map[string]map[string]any {
-	return map[string]map[string]any{
+	schemas := map[string]map[string]any{
 		"alert":              {"props": []string{"text", "tone"}, "children": false},
 		"appshell":           {"props": []string{}, "children": true, "child_slots": []string{"sidebar", "content"}},
 		"article":            {"props": []string{"title"}, "children": true},
@@ -1020,6 +1043,23 @@ func componentSchemas() map[string]map[string]any {
 		"textarea":           {"props": []string{"label", "name", "placeholder"}, "children": false},
 		"theme_toggle":       {"props": []string{}, "children": false},
 	}
+	for _, schema := range schemas {
+		props, ok := schema["props"].([]string)
+		if !ok {
+			continue
+		}
+		hasID := false
+		for _, prop := range props {
+			if prop == "id" {
+				hasID = true
+				break
+			}
+		}
+		if !hasID {
+			schema["props"] = append(props, "id")
+		}
+	}
+	return schemas
 }
 
 func mcpTools() []map[string]any {

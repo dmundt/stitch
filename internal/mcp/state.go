@@ -52,6 +52,10 @@ func newStore() sessionStore {
 	return &memStore{sessions: map[string]*sessionState{}}
 }
 
+func defaultHeadSnippets() []string {
+	return []string{string(htmx.Head()), brand.FaviconLinkTag()}
+}
+
 func (s *memStore) createSession(title, provider string) *sessionState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -70,7 +74,7 @@ func (s *memStore) createSession(title, provider string) *sessionState {
 			Title:        title,
 			Lang:         "en",
 			Provider:     provider,
-			HeadSnippets: []string{string(htmx.Head()), brand.FaviconLinkTag()},
+			HeadSnippets: defaultHeadSnippets(),
 		},
 		Components: map[string]*componentNode{},
 		Blocks: map[string][]string{
