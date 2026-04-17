@@ -35,6 +35,7 @@ This gives you consistency at the document level and freedom at the component/la
 - CSS-framework agnostic components.
 - Pluggable stylesheet providers.
 - Encapsulated, nested element composition for larger UI sections.
+- [htmx](https://htmx.org) as the primary and only mechanism for dynamic behavior and interactivity.
 - Strong, table-driven and integration test coverage.
 
 ## Installation
@@ -172,7 +173,29 @@ Stitch currently implements constructor-based component types for:
 - Forms: input, select, textarea, checkbox, radio, fieldset, form
 - Feedback/actions: alert, badge, button, card
 
-## CSS Provider Injection
+## Dynamic Behavior and Interactivity
+
+Stitch uses [htmx](https://htmx.org) as the primary and only mechanism for adding dynamic behavior and interactivity to stitch-based applications.
+
+htmx extends standard HTML with attributes such as `hx-get`, `hx-post`, `hx-swap`, and `hx-target`, allowing server-rendered fragments to be fetched and swapped into the page without writing JavaScript. This keeps the application logic on the server in Go and the browser layer thin and declarative.
+
+To include htmx in your page, inject it via a CSS provider or a static `<script>` tag:
+
+```go
+provider := css.NewStaticProvider("custom", template.HTML(`
+    <link rel="stylesheet" href="https://example.com/app.css">
+    <script src="https://unpkg.com/htmx.org@2" defer></script>
+`))
+```
+
+Stitch provides first-class htmx support through interaction wrappers:
+
+- `ui.NewInteractiveAction` — a button with `ui.Interaction` that emits `hx-*` attributes.
+- `ui.NewInteractiveMenu` — a nav with `ui.Interaction` that emits `hx-*` attributes.
+
+Use `ui.Interaction` to declare the htmx behaviour (method, URL, target, swap strategy) in Go. Stitch then renders the correct `hx-*` attributes so your application code stays GUI-semantic and free of inline HTML strings.
+
+
 
 Stitch core never hardcodes external CSS frameworks. It ships generic provider infrastructure and includes two built-in providers: `none` (baseline) and `stitch` (built-in default stitch style — flat geometry, restrained borders, readability-first typography).
 
