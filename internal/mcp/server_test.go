@@ -593,6 +593,9 @@ func TestAppExport(t *testing.T) {
 	if !strings.Contains(seen["internal/web/server.go"], "github.com/dmundt/stitch/css") || !strings.Contains(seen["internal/web/server.go"], "css.Assets") {
 		t.Fatalf("expected generated server to use stitch css assets: %s", seen["internal/web/server.go"])
 	}
+	if strings.Contains(seen["internal/web/server.go"], "\"strconv\"") {
+		t.Fatalf("expected generated server to avoid unused strconv import: %s", seen["internal/web/server.go"])
+	}
 
 	_, err = a.safeDispatch("app.export", map[string]any{"build_id": build.ID, "output_mode": "zip"})
 	if err == nil {

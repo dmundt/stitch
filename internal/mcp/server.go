@@ -1325,7 +1325,7 @@ func main() {
 func renderGeneratedServer(routes []map[string]string) string {
 	var b strings.Builder
 	b.WriteString("package web\n\n")
-	b.WriteString("import (\n\t\"net/http\"\n\t\"strconv\"\n\n\t\"github.com/dmundt/stitch/css\"\n)\n\n")
+	b.WriteString("import (\n\t\"net/http\"\n\n\t\"github.com/dmundt/stitch/css\"\n)\n\n")
 	b.WriteString("type routeSpec struct {\n\tPath string\n\tPartialPath string\n\tFullHTML string\n\tPartialHTML string\n}\n\n")
 	b.WriteString("var routeTable = []routeSpec{\n")
 	for _, route := range routes {
