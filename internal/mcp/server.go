@@ -11,6 +11,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -41,11 +42,34 @@ const DefaultMCPHTTPEndpoint = DefaultHTTPEndpoint + defaultMCPPath
 const DefaultSSEEndpoint = DefaultHTTPEndpoint + defaultSSEPath
 
 type app struct {
-	store *stateStore
+	store sessionStore
 }
 
 func newApp() *app {
-	return &app{store: newStore()}
+	return &app{store: newStoreFromEnv()}
+}
+
+// newStoreFromEnv resolves a session-file path (via STITCH_SESSION_FILE or
+// the OS user-cache directory) and returns a file-backed sessionStore.  On any
+// error (unwritable dir, malformed file) it falls back to an in-memory store
+// and logs the reason so the operator is never silently surprised.
+func newStoreFromEnv() sessionStore {
+	path := os.Getenv("STITCH_SESSION_FILE")
+	if path == "" {
+		if cacheDir, err := os.UserCacheDir(); err == nil {
+			path = filepath.Join(cacheDir, "stitch", "sessions.json")
+		}
+	}
+	if path != "" {
+		if fs, err := newFileStore(path); err == nil {
+			log.Printf("stitch: session store: file %s", path)
+			return fs
+		} else {
+			log.Printf("stitch: session store: file unavailable (%v), using memory", err)
+		}
+	}
+	log.Printf("stitch: session store: memory-only")
+	return newStore()
 }
 
 // Run starts the Stitch MCP server with stdio + HTTP/SSE transports.
