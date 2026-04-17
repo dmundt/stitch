@@ -519,6 +519,9 @@ func (c *InteractiveMenuComponent) HTML() string {
 		links = append(links, htmx.NavLink{
 			Label: link.Label,
 			Href:  link.Href,
+			ID:    link.ID,
+			Class: link.Class,
+			Attrs: link.Attrs,
 			HX:    link.Interaction.toHTMXAttrs(),
 		})
 	}

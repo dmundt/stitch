@@ -1,5 +1,5 @@
-{{define "nav"}}<nav><ul>{{range .Links}}<li><a href="{{.Href}}">{{.Label}}</a></li>{{end}}</ul></nav>{{end}}
+{{define "nav"}}<nav><ul>{{range .Links}}<li><a href="{{.Href}}"{{if .ID}} id="{{.ID}}"{{end}}{{if .Class}} class="{{.Class}}"{{end}}{{renderAttrs .Attrs}}>{{.Label}}</a></li>{{end}}</ul></nav>{{end}}
 
-{{define "breadcrumbs"}}<nav aria-label="Breadcrumb"><ol class="breadcrumbs">{{range .Items}}<li>{{if .Current}}<span aria-current="page">{{.Label}}</span>{{else}}<a href="{{.Href}}">{{.Label}}</a>{{end}}</li>{{end}}</ol></nav>{{end}}
+{{define "breadcrumbs"}}<nav aria-label="Breadcrumb"><ol class="breadcrumbs">{{range .Items}}<li>{{if .Current}}<span aria-current="page">{{.Label}}</span>{{else}}<a href="{{.Href}}"{{if .ID}} id="{{.ID}}"{{end}}{{if .Class}} class="{{.Class}}"{{end}}{{renderAttrs .Attrs}}>{{.Label}}</a>{{end}}</li>{{end}}</ol></nav>{{end}}
 
-{{define "pagination"}}<nav aria-label="Pagination"><ul class="pagination">{{range .Items}}<li>{{if .Disabled}}<span aria-disabled="true">{{.Label}}</span>{{else if .Current}}<span aria-current="page">{{.Label}}</span>{{else}}<a href="{{.Href}}">{{.Label}}</a>{{end}}</li>{{end}}</ul></nav>{{end}}
+{{define "pagination"}}<nav aria-label="Pagination"><ul class="pagination">{{range .Items}}<li>{{if .Disabled}}<span aria-disabled="true">{{.Label}}</span>{{else if .Current}}<span aria-current="page">{{.Label}}</span>{{else}}<a href="{{.Href}}"{{if .ID}} id="{{.ID}}"{{end}}{{if .Class}} class="{{.Class}}"{{end}}{{renderAttrs .Attrs}}>{{.Label}}</a>{{end}}</li>{{end}}</ul></nav>{{end}}

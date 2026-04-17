@@ -498,6 +498,69 @@ func TestRenderFullIncludesScriptSrcAndComponentID(t *testing.T) {
 	}
 }
 
+func TestRenderFullRendersNestedLinkItemMetadata(t *testing.T) {
+	a := newApp()
+	sessionID := mustCreateSession(t, a)
+
+	_, err := a.safeDispatch("ui.create_component", map[string]any{
+		"session_id": sessionID,
+		"type":       "nav",
+		"props": map[string]any{
+			"links": []any{map[string]any{
+				"label": "Overview",
+				"href":  "/overview",
+				"id":    "probe-link-overview",
+				"class": "probe-link",
+				"attrs": map[string]any{
+					"data-route": "overview",
+				},
+			}},
+		},
+		"block": "main",
+	})
+	if err != nil {
+		t.Fatalf("create nav failed: %v", err)
+	}
+
+	_, err = a.safeDispatch("ui.create_component", map[string]any{
+		"session_id": sessionID,
+		"type":       "breadcrumbs",
+		"props": map[string]any{
+			"items": []any{map[string]any{
+				"label": "Home",
+				"href":  "/",
+				"id":    "crumb-home",
+				"class": "crumb-link",
+				"attrs": map[string]any{
+					"data-crumb": "home",
+				},
+			}},
+		},
+		"block": "main",
+	})
+	if err != nil {
+		t.Fatalf("create breadcrumbs failed: %v", err)
+	}
+
+	renderRes, err := a.safeDispatch("render.full", map[string]any{"session_id": sessionID})
+	if err != nil {
+		t.Fatalf("render.full failed: %v", err)
+	}
+	html := renderRes["html"].(string)
+	for _, want := range []string{
+		`id="probe-link-overview"`,
+		`class="probe-link"`,
+		`data-route="overview"`,
+		`id="crumb-home"`,
+		`class="crumb-link"`,
+		`data-crumb="home"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expected rendered html to include %q: %s", want, html)
+		}
+	}
+}
+
 func TestSessionGet(t *testing.T) {
 	a := newApp()
 	sessionID := mustCreateSession(t, a)
@@ -1010,11 +1073,20 @@ func TestAsNavLinks(t *testing.T) {
 	}
 	// valid input
 	links := asNavLinks([]any{
-		map[string]any{"label": "Home", "href": "/"},
+		map[string]any{"label": "Home", "href": "/", "id": "home-link", "class": "nav-link", "attrs": map[string]any{"data-route": "home", "onclick": "x"}},
 		map[string]any{"label": "About", "href": "/about"},
 	})
 	if len(links) != 2 || links[0].Label != "Home" || links[0].Href != "/" {
 		t.Fatalf("unexpected nav links: %v", links)
+	}
+	if links[0].ID != "home-link" || links[0].Class != "nav-link" {
+		t.Fatalf("expected nested id/class fields, got %+v", links[0])
+	}
+	if links[0].Attrs["data-route"] != "home" {
+		t.Fatalf("expected nested data-route attr, got %+v", links[0].Attrs)
+	}
+	if _, ok := links[0].Attrs["onclick"]; ok {
+		t.Fatalf("expected blocked nested attr to be removed, got %+v", links[0].Attrs)
 	}
 }
 
@@ -1023,11 +1095,14 @@ func TestAsBreadcrumbItems(t *testing.T) {
 		t.Fatalf("expected empty breadcrumb items, got %v", items)
 	}
 	items := asBreadcrumbItems([]any{
-		map[string]any{"label": "Home", "href": "/", "current": false},
+		map[string]any{"label": "Home", "href": "/", "id": "crumb-home", "class": "crumb-link", "attrs": map[string]any{"data-crumb": "home"}, "current": false},
 		map[string]any{"label": "Docs", "current": true},
 	})
 	if len(items) != 2 || items[0].Label != "Home" || !items[1].Current {
 		t.Fatalf("unexpected breadcrumb items: %v", items)
+	}
+	if items[0].ID != "crumb-home" || items[0].Class != "crumb-link" || items[0].Attrs["data-crumb"] != "home" {
+		t.Fatalf("expected nested breadcrumb metadata, got %+v", items[0])
 	}
 }
 
@@ -1049,10 +1124,13 @@ func TestAsPageItems(t *testing.T) {
 	}
 	items := asPageItems([]any{
 		map[string]any{"label": "Prev", "disabled": true},
-		map[string]any{"label": "1", "current": true, "href": "/?page=1"},
+		map[string]any{"label": "1", "current": true, "href": "/?page=1", "id": "page-1", "class": "page-link", "attrs": map[string]any{"data-page": "1"}},
 	})
 	if len(items) != 2 || !items[0].Disabled || !items[1].Current {
 		t.Fatalf("unexpected page items: %v", items)
+	}
+	if items[1].ID != "page-1" || items[1].Class != "page-link" || items[1].Attrs["data-page"] != "1" {
+		t.Fatalf("expected nested page metadata, got %+v", items[1])
 	}
 }
 
@@ -1108,6 +1186,9 @@ func TestAsInteractiveMenuLinks(t *testing.T) {
 		map[string]any{
 			"label": "Home",
 			"href":  "/",
+			"id":    "menu-home",
+			"class": "menu-link",
+			"attrs": map[string]any{"data-route": "home"},
 			"interaction": map[string]any{
 				"get":    "/home",
 				"target": "main",
@@ -1116,6 +1197,9 @@ func TestAsInteractiveMenuLinks(t *testing.T) {
 	})
 	if len(links) != 1 || links[0].Label != "Home" || links[0].Interaction.Get != "/home" {
 		t.Fatalf("unexpected interactive menu links: %v", links)
+	}
+	if links[0].ID != "menu-home" || links[0].Class != "menu-link" || links[0].Attrs["data-route"] != "home" {
+		t.Fatalf("expected nested interactive menu metadata, got %+v", links[0])
 	}
 }
 
