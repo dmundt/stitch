@@ -221,10 +221,7 @@ func (a *app) dispatchTool(name string, args map[string]any) (map[string]any, er
 func (a *app) toolCreateComponent(args map[string]any) (map[string]any, error) {
 	sessionID := requiredString(args, "session_id")
 	typeName := canonicalType(requiredString(args, "type"))
-	props, _ := args["props"].(map[string]any)
-	if props == nil {
-		props = map[string]any{}
-	}
+	props := asMap(args["props"])
 	parentID := asString(args["parent_id"])
 	block := asString(args["block"])
 	position := asInt(args["position"], -1)
@@ -266,10 +263,7 @@ func (a *app) toolCreateComponent(args map[string]any) (map[string]any, error) {
 func (a *app) toolUpdateComponent(args map[string]any) (map[string]any, error) {
 	sessionID := requiredString(args, "session_id")
 	componentID := requiredString(args, "component_id")
-	props, _ := args["props"].(map[string]any)
-	if props == nil {
-		props = map[string]any{}
-	}
+	props := asMap(args["props"])
 	session, err := a.store.updateSession(sessionID, func(s *sessionState) error {
 		node, ok := s.Components[componentID]
 		if !ok {
@@ -799,11 +793,25 @@ func asStringMatrix(v any) [][]string {
 }
 
 func asMap(v any) map[string]any {
-	m, _ := v.(map[string]any)
-	if m == nil {
+	switch t := v.(type) {
+	case map[string]any:
+		if t == nil {
+			return map[string]any{}
+		}
+		return t
+	case string:
+		trimmed := strings.TrimSpace(t)
+		if trimmed == "" {
+			return map[string]any{}
+		}
+		decoded := map[string]any{}
+		if err := json.Unmarshal([]byte(trimmed), &decoded); err != nil {
+			return map[string]any{}
+		}
+		return decoded
+	default:
 		return map[string]any{}
 	}
-	return m
 }
 
 func asNavLinks(v any) []ui.NavLink {
@@ -1002,8 +1010,28 @@ func mcpTools() []map[string]any {
 		toolDef("page_set_head_snippet", "Append safe head snippet", []string{"session_id", "snippet"}),
 		toolDef("schema_list_component_types", "List supported component types", nil),
 		toolDef("schema_get_component_fields", "Get fields for one component type", []string{"type"}),
-		toolDef("ui_create_component", "Create a component and place in tree", []string{"session_id", "type", "props", "parent_id", "block", "position"}),
-		toolDef("ui_update_component", "Update component props/type", []string{"session_id", "component_id", "type", "props"}),
+		toolDefWithTypedFields(
+			"ui_create_component",
+			"Create a component and place in tree",
+			map[string]map[string]any{
+				"session_id": {"type": "string"},
+				"type":       {"type": "string"},
+				"props":      {"type": "object", "additionalProperties": true},
+				"parent_id":  {"type": "string"},
+				"block":      {"type": "string"},
+				"position":   {"type": "integer"},
+			},
+		),
+		toolDefWithTypedFields(
+			"ui_update_component",
+			"Update component props/type",
+			map[string]map[string]any{
+				"session_id":   {"type": "string"},
+				"component_id": {"type": "string"},
+				"type":         {"type": "string"},
+				"props":        {"type": "object", "additionalProperties": true},
+			},
+		),
 		toolDef("ui_delete_component", "Delete component subtree", []string{"session_id", "component_id"}),
 		toolDef("ui_move_component", "Move component within tree", []string{"session_id", "component_id", "new_parent_id", "new_block", "position"}),
 		toolDef("ui_get_component", "Get one component", []string{"session_id", "component_id"}),
@@ -1019,14 +1047,30 @@ func toolDef(name, description string, fields []string) map[string]any {
 	for _, field := range fields {
 		props[field] = map[string]any{"type": "string"}
 	}
+	return toolDefWithTypedFields(name, description, castSchemaFields(props))
+}
+
+func toolDefWithTypedFields(name, description string, fields map[string]map[string]any) map[string]any {
 	return map[string]any{
 		"name":        name,
 		"description": description,
 		"inputSchema": map[string]any{
 			"type":       "object",
-			"properties": props,
+			"properties": fields,
 		},
 	}
+}
+
+func castSchemaFields(fields map[string]any) map[string]map[string]any {
+	out := make(map[string]map[string]any, len(fields))
+	for key, value := range fields {
+		m, ok := value.(map[string]any)
+		if !ok {
+			continue
+		}
+		out[key] = m
+	}
+	return out
 }
 
 func init() {

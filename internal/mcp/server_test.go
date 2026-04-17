@@ -762,6 +762,50 @@ func TestAsStringMatrix(t *testing.T) {
 	}
 }
 
+func TestAsMapParsesJSONString(t *testing.T) {
+	m := asMap(`{"text":"hello","level":2}`)
+	if got := asString(m["text"]); got != "hello" {
+		t.Fatalf("expected parsed text to be hello, got %q", got)
+	}
+	if got := asInt(m["level"], 0); got != 2 {
+		t.Fatalf("expected parsed level to be 2, got %d", got)
+	}
+}
+
+func TestMCPToolsPropsAreObjectSchema(t *testing.T) {
+	tools := mcpTools()
+	findTool := func(name string) map[string]any {
+		for _, tool := range tools {
+			if toolName, _ := tool["name"].(string); toolName == name {
+				return tool
+			}
+		}
+		return nil
+	}
+
+	for _, toolName := range []string{"ui_create_component", "ui_update_component"} {
+		tool := findTool(toolName)
+		if tool == nil {
+			t.Fatalf("missing tool definition for %s", toolName)
+		}
+		inputSchema, ok := tool["inputSchema"].(map[string]any)
+		if !ok {
+			t.Fatalf("tool %s missing input schema", toolName)
+		}
+		properties, ok := inputSchema["properties"].(map[string]map[string]any)
+		if !ok {
+			t.Fatalf("tool %s properties have unexpected type %T", toolName, inputSchema["properties"])
+		}
+		propsSchema, ok := properties["props"]
+		if !ok {
+			t.Fatalf("tool %s missing props schema", toolName)
+		}
+		if got := asString(propsSchema["type"]); got != "object" {
+			t.Fatalf("tool %s props type must be object, got %q", toolName, got)
+		}
+	}
+}
+
 func TestAsNavLinks(t *testing.T) {
 	// nil input
 	if links := asNavLinks(nil); len(links) != 0 {
