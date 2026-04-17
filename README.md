@@ -2,9 +2,37 @@
 
 [![CI](https://github.com/dmundt/stitch/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/stitch/actions/workflows/ci.yml)
 
+![Stitch logo](internal/brand/stitch-logo.svg)
+
 Stitch is a public, opinionated, HTML-only server-side rendering framework for Go.
 
 It composes predefined page template blocks using object-style constructors, keeps generated markup CSS-framework agnostic, and lets you inject styles from external CSS frameworks such as minstyle.io or Milligram.
+
+Brand line: **Stitch - compose UIs, agent-first**
+
+## Branding
+
+Stitch includes a simple technical identity suitable for README, docs, CLI output, app icons, favicons, and MCP/agent tooling surfaces.
+
+Assets:
+
+- Full logo: [internal/brand/stitch-logo.svg](internal/brand/stitch-logo.svg)
+- Monochrome variant: [internal/brand/stitch-logo-mono.svg](internal/brand/stitch-logo-mono.svg)
+- Symbol-only mark: [internal/brand/stitch-mark.svg](internal/brand/stitch-mark.svg)
+
+HTTP routes (demo + MCP servers):
+
+- `/branding/stitch.svg`
+- `/branding/stitch-mono.svg`
+- `/branding/stitch-mark.svg`
+- `/favicon.svg`
+
+Export-friendly SVG direction:
+
+- Keep vector source in SVG with fixed `viewBox` (no raster dependency).
+- Preserve strokes and rounded joins for terminal-scale legibility.
+- Prefer `currentColor` for monochrome assets to adapt to dark/light surfaces.
+- Keep symbol mark readable at 16px, 24px, and 32px.
 
 ## Purpose
 

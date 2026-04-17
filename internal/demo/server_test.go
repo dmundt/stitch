@@ -70,6 +70,10 @@ func TestRoutes(t *testing.T) {
 	}{
 		{path: "/", status: http.StatusOK, body: "Stitch Component Showcase"},
 		{path: "/assets/stitch.css", status: http.StatusOK, body: "--stitch-accent"},
+		{path: "/branding/stitch.svg", status: http.StatusOK, body: "Stitch Logo"},
+		{path: "/branding/stitch-mono.svg", status: http.StatusOK, body: "Stitch Logo Monochrome"},
+		{path: "/branding/stitch-mark.svg", status: http.StatusOK, body: "Stitch Mark"},
+		{path: "/favicon.svg", status: http.StatusOK, body: "Stitch Mark"},
 		{path: "/provider/stitch", status: http.StatusOK, body: "stitch"},
 		{path: "/provider/milligram", status: http.StatusOK, body: "milligram"},
 		{path: "/provider/nope", status: http.StatusBadRequest, body: "unknown provider"},

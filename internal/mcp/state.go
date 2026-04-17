@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dmundt/stitch/htmx"
+	"github.com/dmundt/stitch/internal/brand"
 	stitchtpl "github.com/dmundt/stitch/template"
 )
 
@@ -61,7 +62,7 @@ func (s *stateStore) createSession(title, provider string) *sessionState {
 			Title:        title,
 			Lang:         "en",
 			Provider:     provider,
-			HeadSnippets: []string{string(htmx.Head())},
+			HeadSnippets: []string{string(htmx.Head()), brand.FaviconLinkTag()},
 		},
 		Components: map[string]*componentNode{},
 		Blocks: map[string][]string{

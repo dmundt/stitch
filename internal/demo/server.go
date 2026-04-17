@@ -8,6 +8,7 @@ import (
 
 	"github.com/dmundt/stitch/css"
 	"github.com/dmundt/stitch/htmx"
+	"github.com/dmundt/stitch/internal/brand"
 	"github.com/dmundt/stitch/render"
 	"github.com/dmundt/stitch/ui"
 )
@@ -170,8 +171,10 @@ func BuildDemoPage(providerName string) (string, error) {
 
 	page := render.NewWindow("Stitch Demo")
 	page.WithHeadRaw(`<meta name="description" content="Stitch demo app">`)
+	page.WithHeadRaw(brand.FaviconLinkTag())
 	page.WithHead(htmx.Head())
 	page.WithHead(layoutNormalizationStyles())
+	page.TopBarComponent(ui.NewImage(brand.PathMark, "Stitch mark"))
 	page.TopBarComponent(ui.NewNav([]ui.NavLink{
 		{Label: "Stitch (Default)", Href: "/provider/stitch"},
 		{Label: "minstyle.io", Href: "/provider/minstyle"},
@@ -180,6 +183,7 @@ func BuildDemoPage(providerName string) (string, error) {
 	}))
 	page.TopBarComponent(ui.NewThemeToggle())
 	page.TopBarComponent(ui.NewHeading(1, "Stitch Component Showcase"))
+	page.TopBarComponent(ui.NewParagraph(brand.BrandLine))
 	page.TopBarComponent(ui.NewParagraph("Current provider: " + providerName))
 	page.TopBarComponent(ui.NewParagraph("Provider badge: " + strings.ToUpper(providerName)))
 	page.ContentComponent(showcase)
@@ -191,6 +195,7 @@ func BuildDemoPage(providerName string) (string, error) {
 // NewHandler returns the demo HTTP handler.
 func NewHandler() http.Handler {
 	mux := http.NewServeMux()
+	brand.MountRoutes(mux)
 	assets, err := css.Assets()
 	if err != nil {
 		panic("failed to open core css assets: " + err.Error())
@@ -285,6 +290,12 @@ nav ul {
 nav a {
 	display: inline-block;
 	padding: 0.2rem 0.35rem;
+}
+
+header img[alt="Stitch mark"] {
+	width: 1.7rem;
+	height: 1.7rem;
+	margin-bottom: 0.35rem;
 }
 
 /* ── containers ──────────────────────────────────────── */

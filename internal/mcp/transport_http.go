@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/dmundt/stitch/css"
+	"github.com/dmundt/stitch/internal/brand"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func (a *app) serveHTTP(ctx context.Context) error {
 	mux := http.NewServeMux()
+	brand.MountRoutes(mux)
 
 	assets, err := css.Assets()
 	if err != nil {
@@ -56,7 +58,7 @@ func (a *app) serveHTTP(ctx context.Context) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	log.Printf("preview + MCP HTTP server listening at %s", DefaultHTTPEndpoint)
+	log.Printf("%s | preview + MCP HTTP server listening at %s", brand.BrandLine, DefaultHTTPEndpoint)
 	err = srv.ListenAndServe()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil

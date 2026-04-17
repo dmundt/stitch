@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dmundt/stitch/internal/brand"
 	"github.com/dmundt/stitch/internal/demo"
 )
 
@@ -21,7 +22,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("stitch demo listening on %s", addr)
+		log.Printf("%s | stitch demo listening on %s", brand.BrandLine, addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("demo server failed: %v", err)
 		}
