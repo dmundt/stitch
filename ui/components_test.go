@@ -337,3 +337,21 @@ func TestWithIDDoesNotDuplicateExistingID(t *testing.T) {
 		t.Fatalf("expected wrapper id to be skipped when root already has id, got: %s", h)
 	}
 }
+
+func TestWithAttrsWrapsTemplateComponent(t *testing.T) {
+	h := WithAttrs(map[string]string{"data-test": "hero", "hx-target": "#content"}, NewHero("Title", "Sub", nil)).HTML()
+	assertContains(t, h, `<section`)
+	assertContains(t, h, `data-test="hero"`)
+	assertContains(t, h, `hx-target="#content"`)
+}
+
+func TestWithAttrsDoesNotDuplicateExistingID(t *testing.T) {
+	h := WithAttrs(map[string]string{"id": "outer-id", "class": "outer"}, fixedIDRootComponent{}).HTML()
+	if strings.Count(h, `id="existing"`) != 1 {
+		t.Fatalf("expected existing id to be preserved once, got: %s", h)
+	}
+	if strings.Contains(h, `id="outer-id"`) {
+		t.Fatalf("expected attrs wrapper id to be skipped when root already has id, got: %s", h)
+	}
+	assertContains(t, h, `class="outer"`)
+}
