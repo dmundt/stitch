@@ -1119,7 +1119,13 @@ func asNavLinks(v any) []ui.NavLink {
 	out := make([]ui.NavLink, 0, len(items))
 	for _, item := range items {
 		m := asMap(item)
-		out = append(out, ui.NavLink{Label: asString(m["label"]), Href: asString(m["href"])})
+		out = append(out, ui.NavLink{
+			Label: asString(m["label"]),
+			Href:  asString(m["href"]),
+			ID:    asString(m["id"]),
+			Class: asString(m["class"]),
+			Attrs: sanitizeNestedAnchorAttrs(m["attrs"]),
+		})
 	}
 	return out
 }
@@ -1132,7 +1138,14 @@ func asBreadcrumbItems(v any) []ui.BreadcrumbItem {
 	out := make([]ui.BreadcrumbItem, 0, len(items))
 	for _, item := range items {
 		m := asMap(item)
-		out = append(out, ui.BreadcrumbItem{Label: asString(m["label"]), Href: asString(m["href"]), Current: asBool(m["current"])})
+		out = append(out, ui.BreadcrumbItem{
+			Label:   asString(m["label"]),
+			Href:    asString(m["href"]),
+			ID:      asString(m["id"]),
+			Class:   asString(m["class"]),
+			Attrs:   sanitizeNestedAnchorAttrs(m["attrs"]),
+			Current: asBool(m["current"]),
+		})
 	}
 	return out
 }
@@ -1161,6 +1174,9 @@ func asPageItems(v any) []ui.PageItem {
 		out = append(out, ui.PageItem{
 			Label:    asString(m["label"]),
 			Href:     asString(m["href"]),
+			ID:       asString(m["id"]),
+			Class:    asString(m["class"]),
+			Attrs:    sanitizeNestedAnchorAttrs(m["attrs"]),
 			Current:  asBool(m["current"]),
 			Disabled: asBool(m["disabled"]),
 		})
@@ -1208,8 +1224,41 @@ func asInteractiveMenuLinks(v any) []ui.InteractiveMenuLink {
 		out = append(out, ui.InteractiveMenuLink{
 			Label:       asString(m["label"]),
 			Href:        asString(m["href"]),
+			ID:          asString(m["id"]),
+			Class:       asString(m["class"]),
+			Attrs:       sanitizeNestedAnchorAttrs(m["attrs"]),
 			Interaction: asInteraction(m["interaction"]),
 		})
+	}
+	return out
+}
+
+func sanitizeNestedAnchorAttrs(v any) map[string]string {
+	raw := asMap(v)
+	if len(raw) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for key, rawValue := range raw {
+		name := strings.TrimSpace(key)
+		if name == "" {
+			continue
+		}
+		value := strings.TrimSpace(anyToString(rawValue))
+		if value == "" {
+			continue
+		}
+		if !isAllowedAttrName(name) || isUnsafeAttrValue(name, value) {
+			continue
+		}
+		lower := strings.ToLower(name)
+		if lower == "id" || lower == "class" || lower == "href" {
+			continue
+		}
+		out[name] = value
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

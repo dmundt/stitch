@@ -9,6 +9,9 @@ import "html/template"
 type BreadcrumbItem struct {
 	Label   string
 	Href    string
+	ID      string
+	Class   string
+	Attrs   map[string]string
 	Current bool
 }
 
@@ -26,6 +29,9 @@ type DescriptionItem struct {
 type NavLink struct {
 	Label string
 	Href  string
+	ID    string
+	Class string
+	Attrs map[string]string
 }
 
 // PageItem describes one item in a pagination control.
@@ -34,6 +40,9 @@ type NavLink struct {
 type PageItem struct {
 	Label    string
 	Href     string
+	ID       string
+	Class    string
+	Attrs    map[string]string
 	Current  bool
 	Disabled bool
 }
@@ -300,6 +309,9 @@ type InteractiveMenuComponent struct {
 type InteractiveMenuLink struct {
 	Label       string
 	Href        string
+	ID          string
+	Class       string
+	Attrs       map[string]string
 	Interaction Interaction
 }
 

@@ -3,7 +3,10 @@ package ui
 import (
 	"bytes"
 	"embed"
+	"html"
 	"html/template"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -17,7 +20,39 @@ var bufPool = sync.Pool{
 }
 
 func init() {
-	tmpl = template.Must(template.ParseFS(templateFS, "templates/*.gohtml"))
+	tmpl = template.Must(template.New("ui").Funcs(template.FuncMap{
+		"renderAttrs": renderAttrs,
+	}).ParseFS(templateFS, "templates/*.gohtml"))
+}
+
+func renderAttrs(attrs map[string]string) template.HTMLAttr {
+	if len(attrs) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(attrs))
+	for key := range attrs {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, key := range keys {
+		value := strings.TrimSpace(attrs[key])
+		if value == "" {
+			continue
+		}
+		b.WriteString(` `)
+		b.WriteString(html.EscapeString(key))
+		b.WriteString(`="`)
+		b.WriteString(html.EscapeString(value))
+		b.WriteString(`"`)
+	}
+	return template.HTMLAttr(b.String())
 }
 
 // execute runs the named template with data and returns the resulting HTML string.

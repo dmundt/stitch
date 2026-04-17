@@ -100,3 +100,22 @@ func TestNavMultipleLinks(t *testing.T) {
 	}
 }
 
+func TestNavRendersLinkMetadata(t *testing.T) {
+	out := htmx.Nav([]htmx.NavLink{
+		{
+			Label: "Home",
+			Href:  "/",
+			ID:    "home-link",
+			Class: "nav-link",
+			Attrs: map[string]string{
+				"data-route": "home",
+				"aria-label": "Home route",
+			},
+		},
+	})
+	for _, want := range []string{`id="home-link"`, `class="nav-link"`, `data-route="home"`, `aria-label="Home route"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Nav() missing %q: %s", want, out)
+		}
+	}
+}

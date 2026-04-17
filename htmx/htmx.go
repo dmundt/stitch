@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"sort"
 	"strings"
 )
 
@@ -25,8 +26,42 @@ type Attrs struct {
 // NavLink is a navigation link optionally enhanced with htmx attributes.
 type NavLink struct {
 	Href  string
+	ID    string
+	Class string
+	Attrs map[string]string
 	HX    Attrs
 	Label string
+}
+
+func attrsMapToString(attrs map[string]string, skip map[string]struct{}) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(attrs))
+	for key := range attrs {
+		if strings.TrimSpace(key) == "" {
+			continue
+		}
+		if skip != nil {
+			if _, exists := skip[strings.ToLower(strings.TrimSpace(key))]; exists {
+				continue
+			}
+		}
+		keys = append(keys, key)
+	}
+	if len(keys) == 0 {
+		return ""
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, key := range keys {
+		value := strings.TrimSpace(attrs[key])
+		if value == "" {
+			continue
+		}
+		fmt.Fprintf(&b, ` %s="%s"`, html.EscapeString(key), html.EscapeString(value))
+	}
+	return b.String()
 }
 
 func (a Attrs) toAttrs() string {
@@ -94,8 +129,16 @@ func Nav(links []NavLink) string {
 	var b strings.Builder
 	b.WriteString("<nav><ul>")
 	for _, l := range links {
-		fmt.Fprintf(&b, `<li><a href="%s"%s>%s</a></li>`,
-			html.EscapeString(l.Href), l.HX.toAttrs(), html.EscapeString(l.Label))
+		fmt.Fprintf(&b, `<li><a href="%s"`, html.EscapeString(l.Href))
+		if strings.TrimSpace(l.ID) != "" {
+			fmt.Fprintf(&b, ` id="%s"`, html.EscapeString(l.ID))
+		}
+		if strings.TrimSpace(l.Class) != "" {
+			fmt.Fprintf(&b, ` class="%s"`, html.EscapeString(l.Class))
+		}
+		b.WriteString(attrsMapToString(l.Attrs, map[string]struct{}{"href": {}, "id": {}, "class": {}}))
+		b.WriteString(l.HX.toAttrs())
+		fmt.Fprintf(&b, `>%s</a></li>`, html.EscapeString(l.Label))
 	}
 	b.WriteString("</ul></nav>")
 	return b.String()

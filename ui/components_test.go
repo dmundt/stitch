@@ -187,25 +187,41 @@ func TestListComponents(t *testing.T) {
 }
 
 func TestNavigationComponents(t *testing.T) {
-	nav := NewNav([]NavLink{{Label: "Home", Href: "/"}})
+	nav := NewNav([]NavLink{{
+		Label: "Home",
+		Href:  "/",
+		ID:    "home-link",
+		Class: "nav-link",
+		Attrs: map[string]string{"data-route": "home", "aria-label": "Home route"},
+	}})
 	assertContains(t, nav.HTML(), "<nav>")
 	assertContains(t, nav.HTML(), `href="/"`)
+	assertContains(t, nav.HTML(), `id="home-link"`)
+	assertContains(t, nav.HTML(), `class="nav-link"`)
+	assertContains(t, nav.HTML(), `data-route="home"`)
+	assertContains(t, nav.HTML(), `aria-label="Home route"`)
 
 	bc := NewBreadcrumbs([]BreadcrumbItem{
-		{Label: "Home", Href: "/"},
+		{Label: "Home", Href: "/", ID: "crumb-home", Class: "crumb-link", Attrs: map[string]string{"data-crumb": "home"}},
 		{Label: "Demo", Current: true},
 	})
 	assertContains(t, bc.HTML(), `aria-label="Breadcrumb"`)
 	assertContains(t, bc.HTML(), `aria-current="page"`)
+	assertContains(t, bc.HTML(), `id="crumb-home"`)
+	assertContains(t, bc.HTML(), `class="crumb-link"`)
+	assertContains(t, bc.HTML(), `data-crumb="home"`)
 
 	pg := NewPagination([]PageItem{
 		{Label: "Prev", Disabled: true},
 		{Label: "1", Current: true},
-		{Label: "2", Href: "/?page=2"},
+		{Label: "2", Href: "/?page=2", ID: "page-2", Class: "page-link", Attrs: map[string]string{"data-page": "2"}},
 	})
 	assertContains(t, pg.HTML(), `aria-label="Pagination"`)
 	assertContains(t, pg.HTML(), `aria-disabled="true"`)
 	assertContains(t, pg.HTML(), `aria-current="page"`)
+	assertContains(t, pg.HTML(), `id="page-2"`)
+	assertContains(t, pg.HTML(), `class="page-link"`)
+	assertContains(t, pg.HTML(), `data-page="2"`)
 }
 
 func TestTableComponents(t *testing.T) {
@@ -309,10 +325,21 @@ func TestInteractiveWrappers(t *testing.T) {
 	assertContains(t, aHTML, `hx-trigger="click"`)
 	assertContains(t, aHTML, `hx-push-url="true"`)
 
-	menu := NewInteractiveMenu([]InteractiveMenuLink{{Label: "R", Href: "#", Interaction: ix}})
+	menu := NewInteractiveMenu([]InteractiveMenuLink{{
+		Label:       "R",
+		Href:        "#",
+		ID:          "menu-link-r",
+		Class:       "menu-link",
+		Attrs:       map[string]string{"data-route": "r", "aria-label": "Route R"},
+		Interaction: ix,
+	}})
 	mHTML := menu.HTML()
 	assertContains(t, mHTML, `hx-get="/provider/stitch"`)
 	assertContains(t, mHTML, `hx-target="#provider-status"`)
+	assertContains(t, mHTML, `id="menu-link-r"`)
+	assertContains(t, mHTML, `class="menu-link"`)
+	assertContains(t, mHTML, `data-route="r"`)
+	assertContains(t, mHTML, `aria-label="Route R"`)
 }
 
 func TestWithIDWrapsTemplateComponent(t *testing.T) {
