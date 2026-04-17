@@ -9,11 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dmundt/stitch/sample/server"
+	"github.com/dmundt/stitch/internal/demo"
 )
 
 func main() {
-	handler := server.NewHandler()
+	handler := demo.NewHandler()
 	addr := "localhost:8080"
 	httpServer := &http.Server{
 		Addr:    addr,
