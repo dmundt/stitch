@@ -1,35 +1,43 @@
 package mcp
 
 import (
-	"bufio"
-	"fmt"
-	"strings"
 	"testing"
 )
 
-func TestReadRPCMessageContentLengthFrame(t *testing.T) {
-	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`
-	input := fmt.Sprintf("Content-Length: %d\r\n\r\n%s", len(body), body)
-	r := bufio.NewReader(strings.NewReader(input))
-
-	req, err := readRPCMessage(r)
+func TestRegisteredToolsIncludesCoreCalls(t *testing.T) {
+	tools, err := registeredTools()
 	if err != nil {
-		t.Fatalf("readRPCMessage failed: %v", err)
+		t.Fatalf("registeredTools failed: %v", err)
 	}
-	if req.Method != "initialize" {
-		t.Fatalf("unexpected method: %s", req.Method)
+	if len(tools) == 0 {
+		t.Fatal("expected non-empty tool registry")
+	}
+
+	seen := map[string]bool{}
+	for _, tool := range tools {
+		if tool.Name == "" {
+			t.Fatal("tool name must not be empty")
+		}
+		if tool.InputSchema == nil {
+			t.Fatalf("tool %s missing input schema", tool.Name)
+		}
+		seen[tool.Name] = true
+	}
+
+	for _, expected := range []string{"session_create", "ui_create_component", "render_full"} {
+		if !seen[expected] {
+			t.Fatalf("missing expected tool registration: %s", expected)
+		}
 	}
 }
 
-func TestReadRPCMessageLineDelimitedJSON(t *testing.T) {
-	input := "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}\n"
-	r := bufio.NewReader(strings.NewReader(input))
-
-	req, err := readRPCMessage(r)
+func TestNewSDKServerBuilds(t *testing.T) {
+	a := newApp()
+	server, err := a.newSDKServer()
 	if err != nil {
-		t.Fatalf("readRPCMessage failed: %v", err)
+		t.Fatalf("newSDKServer failed: %v", err)
 	}
-	if req.Method != "initialize" {
-		t.Fatalf("unexpected method: %s", req.Method)
+	if server == nil {
+		t.Fatal("expected non-nil server")
 	}
 }

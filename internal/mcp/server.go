@@ -992,25 +992,25 @@ func componentSchemas() map[string]map[string]any {
 
 func mcpTools() []map[string]any {
 	return []map[string]any{
-		toolDef("session.create", "Create a UI authoring session", []string{"title", "provider"}),
-		toolDef("session.get", "Get session state", []string{"session_id"}),
-		toolDef("session.reset", "Reset session components and blocks", []string{"session_id"}),
-		toolDef("session.delete", "Delete a session", []string{"session_id"}),
-		toolDef("providers.list", "List available CSS providers", nil),
-		toolDef("page.set_meta", "Update page title/lang", []string{"session_id", "title", "lang"}),
-		toolDef("page.set_css_provider", "Set CSS provider", []string{"session_id", "provider"}),
-		toolDef("page.set_head_snippet", "Append safe head snippet", []string{"session_id", "snippet"}),
-		toolDef("schema.list_component_types", "List supported component types", nil),
-		toolDef("schema.get_component_fields", "Get fields for one component type", []string{"type"}),
-		toolDef("ui.create_component", "Create a component and place in tree", []string{"session_id", "type", "props", "parent_id", "block", "position"}),
-		toolDef("ui.update_component", "Update component props/type", []string{"session_id", "component_id", "type", "props"}),
-		toolDef("ui.delete_component", "Delete component subtree", []string{"session_id", "component_id"}),
-		toolDef("ui.move_component", "Move component within tree", []string{"session_id", "component_id", "new_parent_id", "new_block", "position"}),
-		toolDef("ui.get_component", "Get one component", []string{"session_id", "component_id"}),
-		toolDef("ui.list_components", "List components and block roots", []string{"session_id"}),
-		toolDef("render.full", "Render full HTML page", []string{"session_id"}),
-		toolDef("render.block", "Render a single block fragment", []string{"session_id", "block"}),
-		toolDef("render.component", "Render one component subtree", []string{"session_id", "component_id"}),
+		toolDef("session_create", "Create a UI authoring session", []string{"title", "provider"}),
+		toolDef("session_get", "Get session state", []string{"session_id"}),
+		toolDef("session_reset", "Reset session components and blocks", []string{"session_id"}),
+		toolDef("session_delete", "Delete a session", []string{"session_id"}),
+		toolDef("providers_list", "List available CSS providers", nil),
+		toolDef("page_set_meta", "Update page title/lang", []string{"session_id", "title", "lang"}),
+		toolDef("page_set_css_provider", "Set CSS provider", []string{"session_id", "provider"}),
+		toolDef("page_set_head_snippet", "Append safe head snippet", []string{"session_id", "snippet"}),
+		toolDef("schema_list_component_types", "List supported component types", nil),
+		toolDef("schema_get_component_fields", "Get fields for one component type", []string{"type"}),
+		toolDef("ui_create_component", "Create a component and place in tree", []string{"session_id", "type", "props", "parent_id", "block", "position"}),
+		toolDef("ui_update_component", "Update component props/type", []string{"session_id", "component_id", "type", "props"}),
+		toolDef("ui_delete_component", "Delete component subtree", []string{"session_id", "component_id"}),
+		toolDef("ui_move_component", "Move component within tree", []string{"session_id", "component_id", "new_parent_id", "new_block", "position"}),
+		toolDef("ui_get_component", "Get one component", []string{"session_id", "component_id"}),
+		toolDef("ui_list_components", "List components and block roots", []string{"session_id"}),
+		toolDef("render_full", "Render full HTML page", []string{"session_id"}),
+		toolDef("render_block", "Render a single block fragment", []string{"session_id", "block"}),
+		toolDef("render_component", "Render one component subtree", []string{"session_id", "component_id"}),
 	}
 }
 
@@ -1040,7 +1040,52 @@ func (a *app) safeDispatch(name string, args map[string]any) (_ map[string]any, 
 			err = fmt.Errorf("invalid arguments: %v", r)
 		}
 	}()
-	return a.dispatchTool(name, args)
+	return a.dispatchTool(normalizeToolName(name), args)
+}
+
+func normalizeToolName(name string) string {
+	switch name {
+	case "session_create":
+		return "session.create"
+	case "session_get":
+		return "session.get"
+	case "session_reset":
+		return "session.reset"
+	case "session_delete":
+		return "session.delete"
+	case "providers_list":
+		return "providers.list"
+	case "page_set_meta":
+		return "page.set_meta"
+	case "page_set_css_provider":
+		return "page.set_css_provider"
+	case "page_set_head_snippet":
+		return "page.set_head_snippet"
+	case "schema_list_component_types":
+		return "schema.list_component_types"
+	case "schema_get_component_fields":
+		return "schema.get_component_fields"
+	case "ui_create_component":
+		return "ui.create_component"
+	case "ui_update_component":
+		return "ui.update_component"
+	case "ui_delete_component":
+		return "ui.delete_component"
+	case "ui_move_component":
+		return "ui.move_component"
+	case "ui_get_component":
+		return "ui.get_component"
+	case "ui_list_components":
+		return "ui.list_components"
+	case "render_full":
+		return "render.full"
+	case "render_block":
+		return "render.block"
+	case "render_component":
+		return "render.component"
+	default:
+		return name
+	}
 }
 
 func jsonText(v any) string {

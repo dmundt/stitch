@@ -1,172 +1,92 @@
 package mcp
 
 import (
-	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"strconv"
-	"strings"
+
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-type rpcRequest struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      any             `json:"id,omitempty"`
-	Method  string          `json:"method"`
-	Params  json.RawMessage `json:"params,omitempty"`
-}
-
-type rpcResponse struct {
-	JSONRPC string     `json:"jsonrpc"`
-	ID      any        `json:"id,omitempty"`
-	Result  any        `json:"result,omitempty"`
-	Error   *rpcErrObj `json:"error,omitempty"`
-}
-
-type rpcErrObj struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-type toolCallRequest struct {
-	Name      string         `json:"name"`
-	Arguments map[string]any `json:"arguments"`
+type registeredTool struct {
+	Name        string
+	Description string
+	InputSchema any
 }
 
 func (a *app) serveSTDIO() error {
-	r := bufio.NewReader(os.Stdin)
-	w := bufio.NewWriter(os.Stdout)
-
-	for {
-		req, err := readRPCMessage(r)
-		if err != nil {
-			return err
-		}
-		resp := a.handleRPC(req)
-		if err := writeRPCMessage(w, resp); err != nil {
-			return err
-		}
-	}
-}
-
-func readRPCMessage(r *bufio.Reader) (rpcRequest, error) {
-	contentLen := -1
-	for {
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return rpcRequest{}, err
-		}
-		line = strings.TrimRight(line, "\r\n")
-		if line == "" {
-			if contentLen < 0 {
-				continue
-			}
-			break
-		}
-
-		trimmed := strings.TrimSpace(line)
-		if contentLen < 0 && strings.HasPrefix(trimmed, "{") {
-			var req rpcRequest
-			if err := json.Unmarshal([]byte(trimmed), &req); err != nil {
-				return rpcRequest{}, err
-			}
-			return req, nil
-		}
-
-		lower := strings.ToLower(line)
-		if strings.HasPrefix(lower, "content-length:") {
-			raw := strings.TrimSpace(line[len("content-length:"):])
-			n, err := strconv.Atoi(raw)
-			if err != nil {
-				return rpcRequest{}, fmt.Errorf("invalid content-length: %w", err)
-			}
-			contentLen = n
-		}
-	}
-	if contentLen <= 0 {
-		return rpcRequest{}, errors.New("missing content-length")
-	}
-	body := make([]byte, contentLen)
-	if _, err := io.ReadFull(r, body); err != nil {
-		return rpcRequest{}, err
-	}
-	var req rpcRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return rpcRequest{}, err
-	}
-	return req, nil
-}
-
-func writeRPCMessage(w *bufio.Writer, resp rpcResponse) error {
-	body, err := json.Marshal(resp)
+	server, err := a.newSDKServer()
 	if err != nil {
 		return err
 	}
-	header := fmt.Sprintf("Content-Length: %d\r\n\r\n", len(body))
-	if _, err := w.WriteString(header); err != nil {
-		return err
-	}
-	if _, err := w.Write(body); err != nil {
-		return err
-	}
-	return w.Flush()
+	return server.Run(context.Background(), &sdkmcp.StdioTransport{})
 }
 
-func (a *app) handleRPC(req rpcRequest) rpcResponse {
-	id := req.ID
-	if req.JSONRPC == "" {
-		req.JSONRPC = "2.0"
-	}
-	switch req.Method {
-	case "initialize":
-		return rpcResponse{JSONRPC: "2.0", ID: id, Result: map[string]any{
-			"protocolVersion": "2025-03-26",
-			"capabilities": map[string]any{
-				"tools": map[string]any{},
-			},
-			"serverInfo": map[string]any{
-				"name":    "stitch-mcp",
-				"version": "0.1.0",
-			},
-		}}
-	case "notifications/initialized":
-		return rpcResponse{JSONRPC: "2.0", ID: id, Result: map[string]any{}}
-	case "tools/list":
-		return rpcResponse{JSONRPC: "2.0", ID: id, Result: map[string]any{"tools": mcpTools()}}
-	case "tools/call":
-		res, err := a.handleToolCall(req.Params)
-		if err != nil {
-			return rpcResponse{JSONRPC: "2.0", ID: id, Error: &rpcErrObj{Code: -32000, Message: err.Error()}}
-		}
-		return rpcResponse{JSONRPC: "2.0", ID: id, Result: res}
-	default:
-		return rpcResponse{JSONRPC: "2.0", ID: id, Error: &rpcErrObj{Code: -32601, Message: "method not found"}}
-	}
-}
+func (a *app) newSDKServer() (*sdkmcp.Server, error) {
+	server := sdkmcp.NewServer(&sdkmcp.Implementation{
+		Name:    "stitch-mcp",
+		Version: "0.1.0",
+	}, nil)
 
-func (a *app) handleToolCall(raw json.RawMessage) (map[string]any, error) {
-	var req toolCallRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
+	tools, err := registeredTools()
+	if err != nil {
 		return nil, err
 	}
-	if req.Arguments == nil {
-		req.Arguments = map[string]any{}
+
+	for _, tool := range tools {
+		t := tool
+		server.AddTool(&sdkmcp.Tool{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: t.InputSchema,
+		}, func(ctx context.Context, req *sdkmcp.CallToolRequest) (*sdkmcp.CallToolResult, error) {
+			args := map[string]any{}
+			if len(req.Params.Arguments) > 0 {
+				if err := json.Unmarshal(req.Params.Arguments, &args); err != nil {
+					return &sdkmcp.CallToolResult{
+						IsError: true,
+						Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: fmt.Sprintf("invalid arguments: %v", err)}},
+					}, nil
+				}
+			}
+
+			result, err := a.safeDispatch(t.Name, args)
+			if err != nil {
+				return &sdkmcp.CallToolResult{
+					IsError: true,
+					Content: []sdkmcp.Content{&sdkmcp.TextContent{Text: err.Error()}},
+				}, nil
+			}
+
+			encoded, _ := json.MarshalIndent(result, "", "  ")
+			return &sdkmcp.CallToolResult{
+				IsError:           false,
+				StructuredContent: result,
+				Content: []sdkmcp.Content{
+					&sdkmcp.TextContent{Text: string(encoded)},
+				},
+			}, nil
+		})
 	}
 
-	result, err := a.safeDispatch(req.Name, req.Arguments)
-	if err != nil {
-		return map[string]any{
-			"isError": true,
-			"content": []map[string]any{{"type": "text", "text": err.Error()}},
-		}, nil
-	}
+	return server, nil
+}
 
-	encoded, _ := json.MarshalIndent(result, "", "  ")
-	return map[string]any{
-		"isError":           false,
-		"structuredContent": result,
-		"content":           []map[string]any{{"type": "text", "text": string(encoded)}},
-	}, nil
+func registeredTools() ([]registeredTool, error) {
+	raw := mcpTools()
+	out := make([]registeredTool, 0, len(raw))
+	for _, tool := range raw {
+		name, _ := tool["name"].(string)
+		if name == "" {
+			return nil, errors.New("tool definition is missing name")
+		}
+		description, _ := tool["description"].(string)
+		out = append(out, registeredTool{
+			Name:        name,
+			Description: description,
+			InputSchema: tool["inputSchema"],
+		})
+	}
+	return out, nil
 }

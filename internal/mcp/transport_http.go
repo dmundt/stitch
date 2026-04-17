@@ -2,9 +2,7 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"io"
 	"log"
 	"net/http"
 	"path"
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"github.com/dmundt/stitch/css"
+	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func (a *app) serveHTTP(ctx context.Context) error {
@@ -31,8 +30,19 @@ func (a *app) serveHTTP(ctx context.Context) error {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
 	mux.HandleFunc("/sessions/", a.handleSessionHTTP)
-	mux.HandleFunc(defaultMCPPath, a.handleMCPHTTP)
-	mux.HandleFunc(defaultSSEPath, a.handleMCPSSE)
+
+	sdkServer, err := a.newSDKServer()
+	if err != nil {
+		return err
+	}
+	streamable := &sdkmcp.StreamableServerTransport{
+		SessionID: randomID("mcp-http"),
+	}
+	if _, err := sdkServer.Connect(ctx, streamable, nil); err != nil {
+		return err
+	}
+	mux.Handle(defaultMCPPath, streamable)
+	mux.Handle(defaultSSEPath, streamable)
 
 	srv := &http.Server{
 		Addr:    listenAddr,
@@ -105,48 +115,4 @@ func (a *app) handleSessionHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
-}
-
-func (a *app) handleMCPSSE(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-	_, _ = io.WriteString(w, "event: ready\ndata: {\"ok\":true}\n\n")
-	flusher.Flush()
-
-	ticker := time.NewTicker(25 * time.Second)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case <-ticker.C:
-			_, _ = io.WriteString(w, "event: ping\ndata: {}\n\n")
-			flusher.Flush()
-		}
-	}
-}
-
-func (a *app) handleMCPHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	var req rpcRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	resp := a.handleRPC(req)
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
 }

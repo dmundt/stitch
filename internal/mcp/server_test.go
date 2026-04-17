@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -313,33 +312,6 @@ func TestRenderFullContainsComposedContent(t *testing.T) {
 		if !strings.Contains(html, marker) {
 			t.Fatalf("full render missing marker %q", marker)
 		}
-	}
-}
-
-func TestHandleToolCallErrorEnvelope(t *testing.T) {
-	a := newApp()
-
-	raw, err := json.Marshal(map[string]any{
-		"name":      "session.get",
-		"arguments": map[string]any{},
-	})
-	if err != nil {
-		t.Fatalf("marshal request failed: %v", err)
-	}
-
-	res, err := a.handleToolCall(raw)
-	if err != nil {
-		t.Fatalf("handleToolCall unexpectedly failed: %v", err)
-	}
-	if res["isError"] != true {
-		t.Fatalf("expected isError=true, got %v", res["isError"])
-	}
-	content := res["content"].([]map[string]any)
-	if len(content) == 0 {
-		t.Fatal("expected content in error envelope")
-	}
-	if !strings.Contains(content[0]["text"].(string), "missing required argument") {
-		t.Fatalf("unexpected error text: %v", content[0]["text"])
 	}
 }
 
