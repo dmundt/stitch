@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -133,6 +134,13 @@ func (a *app) dispatchTool(name string, args map[string]any) (map[string]any, er
 			return nil, err
 		}
 		return map[string]any{"deleted": deleted}, nil
+	case "session.diagnostics":
+		sessionID := requiredString(args, "session_id")
+		session, err := a.store.getSession(sessionID)
+		if err != nil {
+			return nil, err
+		}
+		return a.buildSessionDiagnostics(session), nil
 	case "providers.list":
 		return map[string]any{"providers": listProviders()}, nil
 	case "page.set_meta":
@@ -524,6 +532,113 @@ func (a *app) renderComponent(session *sessionState, componentID string) (string
 		return "", err
 	}
 	return comp.HTML(), nil
+}
+
+func (a *app) buildSessionDiagnostics(session *sessionState) map[string]any {
+	ids := make([]string, 0, len(session.Components))
+	for id := range session.Components {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	renderedAttrs := make([]map[string]any, 0, len(ids))
+	for _, id := range ids {
+		node := session.Components[id]
+		if node == nil {
+			continue
+		}
+		attrs := mergedNodeAttrs(node)
+		if pid := strings.TrimSpace(asString(node.Props["id"])); pid != "" {
+			attrs["id"] = pid
+		}
+		if len(attrs) == 0 {
+			continue
+		}
+		renderedAttrs = append(renderedAttrs, map[string]any{
+			"component_id": id,
+			"tag":          defaultTagForType(node.Type),
+			"attrs":        attrs,
+		})
+	}
+
+	headSummary := map[string]any{"scripts": 0, "styles": 0, "meta": 0, "other": 0}
+	for _, snippet := range session.Page.HeadSnippets {
+		s := strings.ToLower(strings.TrimSpace(snippet))
+		switch {
+		case strings.HasPrefix(s, "<script"):
+			headSummary["scripts"] = headSummary["scripts"].(int) + 1
+		case strings.HasPrefix(s, "<style") || strings.HasPrefix(s, "<link"):
+			headSummary["styles"] = headSummary["styles"].(int) + 1
+		case strings.HasPrefix(s, "<meta"):
+			headSummary["meta"] = headSummary["meta"].(int) + 1
+		default:
+			headSummary["other"] = headSummary["other"].(int) + 1
+		}
+	}
+
+	return map[string]any{
+		"rendered_attrs": renderedAttrs,
+		"dropped_props":  []map[string]any{},
+		"head_summary":   headSummary,
+		"route_state": map[string]any{
+			"mode": "manual",
+		},
+	}
+}
+
+func defaultTagForType(typeName string) string {
+	switch canonicalType(typeName) {
+	case "alert":
+		return "aside"
+	case "appshell", "section", "hero", "split":
+		return "section"
+	case "article", "card":
+		return "article"
+	case "badge":
+		return "span"
+	case "blockquote":
+		return "blockquote"
+	case "breadcrumbs", "interactive_menu", "nav", "pagination":
+		return "nav"
+	case "button", "interactive_action":
+		return "button"
+	case "checkbox", "input", "radio":
+		return "input"
+	case "codeblock":
+		return "pre"
+	case "container", "container_fluid", "row", "column", "grid", "grid_item", "cluster", "stack", "sidebar_layout":
+		return "div"
+	case "descriptionlist":
+		return "dl"
+	case "details":
+		return "details"
+	case "fieldset":
+		return "fieldset"
+	case "form":
+		return "form"
+	case "heading":
+		return "h2"
+	case "horizontal_rule":
+		return "hr"
+	case "image":
+		return "img"
+	case "list":
+		return "ul"
+	case "ordered_list":
+		return "ol"
+	case "paragraph":
+		return "p"
+	case "select":
+		return "select"
+	case "table":
+		return "table"
+	case "textarea":
+		return "textarea"
+	case "theme_toggle":
+		return "label"
+	default:
+		return "div"
+	}
 }
 
 func (a *app) buildBlockComponent(session *sessionState, block string) (ui.Component, error) {
@@ -1210,6 +1325,7 @@ func mcpTools() []map[string]any {
 		toolDef("session_get", "Get session state", []string{"session_id"}),
 		toolDef("session_reset", "Reset session components and blocks", []string{"session_id"}),
 		toolDef("session_delete", "Delete a session", []string{"session_id"}),
+		toolDef("session_diagnostics", "Inspect rendered attrs, head snippets, and route state", []string{"session_id"}),
 		toolDef("providers_list", "List available CSS providers", nil),
 		toolDef("page_set_meta", "Update page title/lang", []string{"session_id", "title", "lang"}),
 		toolDef("page_set_css_provider", "Set CSS provider", []string{"session_id", "provider"}),
@@ -1303,6 +1419,8 @@ func normalizeToolName(name string) string {
 		return "session.reset"
 	case "session_delete":
 		return "session.delete"
+	case "session_diagnostics":
+		return "session.diagnostics"
 	case "providers_list":
 		return "providers.list"
 	case "page_set_meta":

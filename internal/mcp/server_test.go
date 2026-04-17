@@ -378,6 +378,48 @@ func TestSessionDeleteNonExistent(t *testing.T) {
 	}
 }
 
+func TestSessionDiagnostics(t *testing.T) {
+	a := newApp()
+	sessionID := mustCreateSession(t, a)
+
+	_, err := a.safeDispatch("ui.create_component", map[string]any{
+		"session_id": sessionID,
+		"type":       "paragraph",
+		"props": map[string]any{
+			"text": "hello",
+			"id":   "content",
+			"attrs": map[string]any{
+				"data-test": "main",
+			},
+		},
+		"block": "main",
+	})
+	if err != nil {
+		t.Fatalf("ui.create_component failed: %v", err)
+	}
+
+	res, err := a.safeDispatch("session.diagnostics", map[string]any{"session_id": sessionID})
+	if err != nil {
+		t.Fatalf("session.diagnostics failed: %v", err)
+	}
+
+	rendered, ok := res["rendered_attrs"].([]map[string]any)
+	if !ok {
+		t.Fatalf("expected rendered_attrs array, got %T", res["rendered_attrs"])
+	}
+	if len(rendered) == 0 {
+		t.Fatal("expected rendered attrs to include at least one component")
+	}
+
+	headSummary, ok := res["head_summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected head_summary map, got %T", res["head_summary"])
+	}
+	if _, ok := headSummary["scripts"]; !ok {
+		t.Fatalf("expected scripts count in head_summary: %v", headSummary)
+	}
+}
+
 func TestSessionReset(t *testing.T) {
 	a := newApp()
 	sessionID := mustCreateSession(t, a)
@@ -818,6 +860,7 @@ func TestNormalizeToolName(t *testing.T) {
 		{"session_get", "session.get"},
 		{"session_reset", "session.reset"},
 		{"session_delete", "session.delete"},
+		{"session_diagnostics", "session.diagnostics"},
 		{"providers_list", "providers.list"},
 		{"page_set_meta", "page.set_meta"},
 		{"page_set_css_provider", "page.set_css_provider"},

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -93,6 +94,11 @@ func (a *app) handleSessionHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(htmlText))
+		return
+	case len(parts) == 3 && parts[2] == "diagnostics":
+		payload := a.buildSessionDiagnostics(session)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(payload)
 		return
 	case len(parts) == 4 && parts[2] == "blocks":
 		block := parts[3]
