@@ -1,6 +1,6 @@
 # Stitch
 
-[![CI](https://github.com/dmundt/stitch/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/stitch/actions/workflows/ci.yml)
+[![CI](https://github.com/dmundt/stitch/actions/workflows/ci.yml/badge.svg)](https://github.com/dmundt/stitch/actions/workflows/ci.yml) [![Go Reference](https://pkg.go.dev/badge/github.com/dmundt/stitch.svg)](https://pkg.go.dev/github.com/dmundt/stitch)
 
 ![Stitch logo](internal/brand/stitch-logo.svg)
 
