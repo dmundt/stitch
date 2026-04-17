@@ -108,6 +108,110 @@ func TestRenderNilPage(t *testing.T) {
 	}
 }
 
+func TestRenderNilComposer(t *testing.T) {
+	p := &Page{Title: "no composer"}
+	_, err := Render(p, css.None())
+	if err == nil {
+		t.Fatal("expected nil composer error")
+	}
+	if !strings.Contains(err.Error(), "composer is nil") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+}
+
+func TestRenderNilProvider(t *testing.T) {
+	p := NewPage("nil provider test")
+	p.Main(template.HTML("<p>hello</p>"))
+	html, err := Render(p, nil)
+	if err != nil {
+		t.Fatalf("render with nil provider should use None(): %v", err)
+	}
+	if !strings.Contains(html, "nil provider test") {
+		t.Fatalf("missing title in output: %s", html)
+	}
+}
+
+func TestAddHead(t *testing.T) {
+	p := NewPage("head test")
+	p.AddHead(template.HTML(`<meta name="x" content="y">`))
+	html, err := Render(p, css.None())
+	if err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	if !strings.Contains(html, `name="x"`) {
+		t.Fatalf("expected head fragment in output: %s", html)
+	}
+}
+
+func TestAddHeadRaw(t *testing.T) {
+	p := NewPage("head raw test")
+	p.AddHeadRaw(`<meta name="raw" content="yes">`)
+	html, err := Render(p, css.None())
+	if err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	if !strings.Contains(html, `name="raw"`) {
+		t.Fatalf("expected raw head fragment in output: %s", html)
+	}
+}
+
+func TestHeaderComponentNilNoOp(t *testing.T) {
+	p := NewPage("nil component test")
+	p.HeaderComponent(nil)
+	html, err := Render(p, css.None())
+	if err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	if !strings.Contains(html, "nil component test") {
+		t.Fatalf("missing title: %s", html)
+	}
+}
+
+func TestMainComponentNilNoOp(t *testing.T) {
+	p := NewPage("nil main test")
+	p.MainComponent(nil)
+	_, err := Render(p, css.None())
+	if err != nil {
+		t.Fatalf("render with nil MainComponent failed: %v", err)
+	}
+}
+
+func TestFooterComponentNilNoOp(t *testing.T) {
+	p := NewPage("nil footer test")
+	p.FooterComponent(nil)
+	_, err := Render(p, css.None())
+	if err != nil {
+		t.Fatalf("render with nil FooterComponent failed: %v", err)
+	}
+}
+
+func TestContentComponentNilNoOp(t *testing.T) {
+	p := NewPage("nil content test")
+	p.ContentComponent(nil)
+	_, err := Render(p, css.None())
+	if err != nil {
+		t.Fatalf("render with nil ContentComponent failed: %v", err)
+	}
+}
+
+func TestStatusBarComponentNilNoOp(t *testing.T) {
+	p := NewPage("nil statusbar test")
+	p.StatusBarComponent(nil)
+	_, err := Render(p, css.None())
+	if err != nil {
+		t.Fatalf("render with nil StatusBarComponent failed: %v", err)
+	}
+}
+
+func TestTopBarComponentNilNoOp(t *testing.T) {
+	p := NewPage("nil topbar test")
+	p.TopBarComponent(nil)
+	_, err := Render(p, css.None())
+	if err != nil {
+		t.Fatalf("render with nil TopBarComponent failed: %v", err)
+	}
+}
+
 func TestRenderWithProviderAndBlocks(t *testing.T) {
 	p := NewPage("My Page")
 	_ = p.Composer.AddString(stitchtpl.BlockHeader, "<h1>X</h1>")
