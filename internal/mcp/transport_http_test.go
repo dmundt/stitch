@@ -275,7 +275,6 @@ func TestBuildNodeRendersAllTypes(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatalf("create_component type=%q failed: %v", tc.typeName, err)
-			continue
 		}
 
 		componentID := createRes["component"].(*componentNode).ID
@@ -308,7 +307,7 @@ func TestBuildNodeContainerTypes(t *testing.T) {
 		componentID := createRes["component"].(*componentNode).ID
 
 		// Add a child
-		childRes, err := a.safeDispatch("ui.create_component", map[string]any{
+		_, err = a.safeDispatch("ui.create_component", map[string]any{
 			"session_id": sessionID,
 			"type":       "paragraph",
 			"props":      map[string]any{"text": "child"},
@@ -317,7 +316,6 @@ func TestBuildNodeContainerTypes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("create child for %s failed: %v", typeName, err)
 		}
-		_ = childRes
 
 		_, err = a.safeDispatch("render.component", map[string]any{
 			"session_id":   sessionID,
