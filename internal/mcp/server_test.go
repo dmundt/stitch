@@ -564,14 +564,20 @@ func TestSchemaGetComponentFields(t *testing.T) {
 	schema := res["schema"].(map[string]any)
 	props := schema["props"].([]string)
 	hasID := false
+	hasAttrs := false
 	for _, p := range props {
 		if p == "id" {
 			hasID = true
-			break
+		}
+		if p == "attrs" {
+			hasAttrs = true
 		}
 	}
 	if !hasID {
 		t.Fatalf("expected heading schema props to include id, got %v", props)
+	}
+	if !hasAttrs {
+		t.Fatalf("expected heading schema props to include attrs, got %v", props)
 	}
 }
 
@@ -583,8 +589,74 @@ func TestSchemaGetComponentFieldsIncludesIDForEmptyPropsType(t *testing.T) {
 	}
 	schema := res["schema"].(map[string]any)
 	props := schema["props"].([]string)
-	if len(props) != 1 || props[0] != "id" {
-		t.Fatalf("expected theme_toggle schema props to be [id], got %v", props)
+	hasID := false
+	hasAttrs := false
+	for _, p := range props {
+		if p == "id" {
+			hasID = true
+		}
+		if p == "attrs" {
+			hasAttrs = true
+		}
+	}
+	if !hasID || !hasAttrs {
+		t.Fatalf("expected theme_toggle schema props to include id and attrs, got %v", props)
+	}
+}
+
+func TestToolCreateComponentSanitizesAttrsAndReturnsWarnings(t *testing.T) {
+	a := newApp()
+	sessionID := mustCreateSession(t, a)
+
+	res, err := a.safeDispatch("ui.create_component", map[string]any{
+		"session_id": sessionID,
+		"type":       "paragraph",
+		"props": map[string]any{
+			"text": "Body",
+			"attrs": map[string]any{
+				"data-test": "ok",
+				"hx-target": "#page-content",
+				"onclick":   "alert(1)",
+				"style":     "color:red",
+			},
+		},
+		"block": "main",
+	})
+	if err != nil {
+		t.Fatalf("ui.create_component failed: %v", err)
+	}
+
+	node := res["component"].(*componentNode)
+	if got := node.Attrs["data-test"]; got != "ok" {
+		t.Fatalf("expected data-test attr to survive, got %q", got)
+	}
+	if got := node.Attrs["hx-target"]; got != "#page-content" {
+		t.Fatalf("expected hx-target attr to survive, got %q", got)
+	}
+	if _, exists := node.Attrs["onclick"]; exists {
+		t.Fatalf("expected onclick attr to be dropped, attrs=%v", node.Attrs)
+	}
+	warnings, ok := res["warnings"].([]map[string]any)
+	if !ok {
+		t.Fatalf("expected warnings payload, got %T", res["warnings"])
+	}
+	if len(warnings) < 2 {
+		t.Fatalf("expected at least 2 warnings, got %v", warnings)
+	}
+
+	renderRes, err := a.safeDispatch("render.full", map[string]any{"session_id": sessionID})
+	if err != nil {
+		t.Fatalf("render.full failed: %v", err)
+	}
+	html := renderRes["html"].(string)
+	if !strings.Contains(html, `data-test="ok"`) {
+		t.Fatalf("expected rendered html to include data-test attr: %s", html)
+	}
+	if !strings.Contains(html, `hx-target="#page-content"`) {
+		t.Fatalf("expected rendered html to include hx-target attr: %s", html)
+	}
+	if strings.Contains(html, `onclick=`) {
+		t.Fatalf("expected blocked onclick attr to be absent: %s", html)
 	}
 }
 

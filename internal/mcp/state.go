@@ -13,10 +13,11 @@ import (
 )
 
 type componentNode struct {
-	ID       string         `json:"id"`
-	Type     string         `json:"type"`
-	Props    map[string]any `json:"props"`
-	Children []string       `json:"children"`
+	ID       string            `json:"id"`
+	Type     string            `json:"type"`
+	Props    map[string]any    `json:"props"`
+	Attrs    map[string]string `json:"attrs,omitempty"`
+	Children []string          `json:"children"`
 }
 
 type pageState struct {
@@ -138,10 +139,14 @@ func cloneSession(in *sessionState) *sessionState {
 			ID:       node.ID,
 			Type:     node.Type,
 			Props:    map[string]any{},
+			Attrs:    map[string]string{},
 			Children: append([]string{}, node.Children...),
 		}
 		for k, v := range node.Props {
 			copyNode.Props[k] = deepCopyAny(v)
+		}
+		for k, v := range node.Attrs {
+			copyNode.Attrs[k] = v
 		}
 		out.Components[id] = copyNode
 	}

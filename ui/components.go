@@ -3,6 +3,7 @@ package ui
 import (
 	"html"
 	"html/template"
+	"sort"
 	"strings"
 
 	"github.com/dmundt/stitch/htmx"
@@ -15,6 +16,36 @@ import (
 // HTML when composing nested structures.
 type Component interface {
 	HTML() string
+}
+
+// WithAttrs wraps any component and injects safe attributes on the root
+// element. Existing id/class attributes are preserved.
+func WithAttrs(attrs map[string]string, child Component) Component {
+	if child == nil || len(attrs) == 0 {
+		return child
+	}
+	clean := map[string]string{}
+	for key, value := range attrs {
+		k := strings.TrimSpace(key)
+		v := strings.TrimSpace(value)
+		if k == "" || v == "" {
+			continue
+		}
+		clean[k] = v
+	}
+	if len(clean) == 0 {
+		return child
+	}
+	return &attrsComponent{Attrs: clean, Child: child}
+}
+
+type attrsComponent struct {
+	Attrs map[string]string
+	Child Component
+}
+
+func (c *attrsComponent) HTML() string {
+	return injectAttributes(c.Child.HTML(), c.Attrs)
 }
 
 // WithID wraps any component and injects an id attribute on the root element.
@@ -98,12 +129,20 @@ func findTagEnd(s string, from int) int {
 }
 
 func hasIDAttribute(openTag string) bool {
+	return hasAttribute(openTag, "id")
+}
+
+func hasAttribute(openTag string, name string) bool {
 	lower := strings.ToLower(openTag)
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return false
+	}
 	for i := 0; i < len(lower); i++ {
-		if lower[i] != 'i' {
+		if lower[i] != name[0] {
 			continue
 		}
-		if i+1 >= len(lower) || lower[i+1] != 'd' {
+		if i+len(name) > len(lower) || lower[i:i+len(name)] != name {
 			continue
 		}
 		if i > 0 {
@@ -112,7 +151,7 @@ func hasIDAttribute(openTag string) bool {
 				continue
 			}
 		}
-		j := i + 2
+		j := i + len(name)
 		for j < len(lower) && (lower[j] == ' ' || lower[j] == '\t' || lower[j] == '\n' || lower[j] == '\r') {
 			j++
 		}
@@ -121,6 +160,62 @@ func hasIDAttribute(openTag string) bool {
 		}
 	}
 	return false
+}
+
+func injectAttributes(fragment string, attrs map[string]string) string {
+	if fragment == "" || len(attrs) == 0 {
+		return fragment
+	}
+	search := 0
+	for search < len(fragment) {
+		idx := strings.Index(fragment[search:], "<")
+		if idx < 0 {
+			return fragment
+		}
+		start := search + idx
+		if start+1 >= len(fragment) {
+			return fragment
+		}
+		next := fragment[start+1]
+		if next == '/' || next == '!' || next == '?' {
+			search = start + 1
+			continue
+		}
+
+		end := findTagEnd(fragment, start+1)
+		if end < 0 {
+			return fragment
+		}
+
+		openTag := fragment[start:end]
+		insertAt := end
+		if end > start && fragment[end-1] == '/' {
+			insertAt = end - 1
+		}
+
+		keys := make([]string, 0, len(attrs))
+		for key := range attrs {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		builder := strings.Builder{}
+		for _, key := range keys {
+			if hasAttribute(openTag, key) {
+				continue
+			}
+			builder.WriteString(` `)
+			builder.WriteString(html.EscapeString(key))
+			builder.WriteString(`="`)
+			builder.WriteString(html.EscapeString(attrs[key]))
+			builder.WriteString(`"`)
+		}
+		if builder.Len() == 0 {
+			return fragment
+		}
+		return fragment[:insertAt] + builder.String() + fragment[insertAt:]
+	}
+	return fragment
 }
 
 // HTML renders alert markup with a default "info" tone when unset.

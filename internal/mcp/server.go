@@ -244,7 +244,7 @@ func (a *app) dispatchTool(name string, args map[string]any) (map[string]any, er
 func (a *app) toolCreateComponent(args map[string]any) (map[string]any, error) {
 	sessionID := requiredString(args, "session_id")
 	typeName := canonicalType(requiredString(args, "type"))
-	props := asMap(args["props"])
+	props, attrs, attrWarnings := sanitizeComponentInput(asMap(args["props"]))
 	parentID := asString(args["parent_id"])
 	block := asString(args["block"])
 	position := asInt(args["position"], -1)
@@ -257,7 +257,7 @@ func (a *app) toolCreateComponent(args map[string]any) (map[string]any, error) {
 	}
 
 	id := randomID("cmp")
-	node := &componentNode{ID: id, Type: typeName, Props: props, Children: []string{}}
+	node := &componentNode{ID: id, Type: typeName, Props: props, Attrs: attrs, Children: []string{}}
 
 	session, err := a.store.updateSession(sessionID, func(s *sessionState) error {
 		if parentID != "" {
@@ -280,13 +280,17 @@ func (a *app) toolCreateComponent(args map[string]any) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"component": node, "session": session}, nil
+	result := map[string]any{"component": node, "session": session}
+	if warnings := withComponentWarnings(node.ID, attrWarnings); len(warnings) > 0 {
+		result["warnings"] = warnings
+	}
+	return result, nil
 }
 
 func (a *app) toolUpdateComponent(args map[string]any) (map[string]any, error) {
 	sessionID := requiredString(args, "session_id")
 	componentID := requiredString(args, "component_id")
-	props := asMap(args["props"])
+	props, attrs, attrWarnings := sanitizeComponentInput(asMap(args["props"]))
 	session, err := a.store.updateSession(sessionID, func(s *sessionState) error {
 		node, ok := s.Components[componentID]
 		if !ok {
@@ -300,12 +304,17 @@ func (a *app) toolUpdateComponent(args map[string]any) (map[string]any, error) {
 			node.Type = normalized
 		}
 		node.Props = props
+		node.Attrs = attrs
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return map[string]any{"component_id": componentID, "session": session}, nil
+	result := map[string]any{"component_id": componentID, "session": session}
+	if warnings := withComponentWarnings(componentID, attrWarnings); len(warnings) > 0 {
+		result["warnings"] = warnings
+	}
+	return result, nil
 }
 
 func (a *app) toolDeleteComponent(args map[string]any) (map[string]any, error) {
@@ -539,10 +548,31 @@ func (a *app) buildComponent(session *sessionState, componentID string) (ui.Comp
 	if err != nil {
 		return nil, err
 	}
+	attrs := mergedNodeAttrs(node)
 	if id := asString(node.Props["id"]); strings.TrimSpace(id) != "" {
 		comp = ui.WithID(id, comp)
+		delete(attrs, "id")
+		delete(attrs, "ID")
+	}
+	if len(attrs) > 0 {
+		comp = ui.WithAttrs(attrs, comp)
 	}
 	return comp, nil
+}
+
+func mergedNodeAttrs(node *componentNode) map[string]string {
+	out := map[string]string{}
+	for k, v := range node.Attrs {
+		out[k] = v
+	}
+	if len(out) > 0 {
+		return out
+	}
+	_, legacy, _ := sanitizeComponentInput(map[string]any{"attrs": node.Props["attrs"]})
+	for k, v := range legacy {
+		out[k] = v
+	}
+	return out
 }
 
 func (a *app) buildNode(session *sessionState, node *componentNode) (ui.Component, error) {
@@ -861,6 +891,111 @@ func asMap(v any) map[string]any {
 	}
 }
 
+func sanitizeComponentInput(props map[string]any) (map[string]any, map[string]string, []map[string]any) {
+	cleanProps := map[string]any{}
+	for k, v := range props {
+		if k == "attrs" {
+			continue
+		}
+		cleanProps[k] = v
+	}
+
+	attrs := map[string]string{}
+	warnings := []map[string]any{}
+	rawAttrs := asMap(props["attrs"])
+	for key, rawValue := range rawAttrs {
+		name := strings.TrimSpace(key)
+		if name == "" {
+			warnings = append(warnings, map[string]any{"attr": key, "reason": "invalid-name"})
+			continue
+		}
+		value := strings.TrimSpace(anyToString(rawValue))
+		if value == "" {
+			warnings = append(warnings, map[string]any{"attr": name, "reason": "empty-value"})
+			continue
+		}
+		if !isAllowedAttrName(name) {
+			warnings = append(warnings, map[string]any{"attr": name, "reason": "blocked"})
+			continue
+		}
+		if isUnsafeAttrValue(name, value) {
+			warnings = append(warnings, map[string]any{"attr": name, "reason": "unsafe-value"})
+			continue
+		}
+		attrs[name] = value
+	}
+
+	if len(attrs) > 0 {
+		cleanProps["attrs"] = attrs
+	}
+	return cleanProps, attrs, warnings
+}
+
+func isAllowedAttrName(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	if lower == "id" || lower == "class" {
+		return true
+	}
+	if strings.HasPrefix(lower, "on") {
+		return false
+	}
+	if lower == "style" {
+		return false
+	}
+	return strings.HasPrefix(lower, "data-") || strings.HasPrefix(lower, "aria-") || strings.HasPrefix(lower, "hx-")
+}
+
+func isUnsafeAttrValue(name, value string) bool {
+	lowerValue := strings.ToLower(strings.TrimSpace(value))
+	if strings.HasPrefix(lowerValue, "javascript:") {
+		return true
+	}
+	if strings.Contains(lowerValue, "\u0000") {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(name)), "hx-") && strings.HasPrefix(lowerValue, "data:text/html") {
+		return true
+	}
+	return false
+}
+
+func anyToString(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case json.Number:
+		return t.String()
+	case bool:
+		if t {
+			return "true"
+		}
+		return "false"
+	case float64:
+		return fmt.Sprintf("%v", t)
+	case int:
+		return fmt.Sprintf("%d", t)
+	case int64:
+		return fmt.Sprintf("%d", t)
+	default:
+		return ""
+	}
+}
+
+func withComponentWarnings(componentID string, warnings []map[string]any) []map[string]any {
+	if len(warnings) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(warnings))
+	for _, w := range warnings {
+		entry := map[string]any{"component_id": componentID}
+		for k, v := range w {
+			entry[k] = v
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
 func asNavLinks(v any) []ui.NavLink {
 	items, ok := v.([]any)
 	if !ok {
@@ -1049,15 +1184,22 @@ func componentSchemas() map[string]map[string]any {
 			continue
 		}
 		hasID := false
+		hasAttrs := false
 		for _, prop := range props {
 			if prop == "id" {
 				hasID = true
-				break
+			}
+			if prop == "attrs" {
+				hasAttrs = true
 			}
 		}
 		if !hasID {
-			schema["props"] = append(props, "id")
+			props = append(props, "id")
 		}
+		if !hasAttrs {
+			props = append(props, "attrs")
+		}
+		schema["props"] = props
 	}
 	return schemas
 }
