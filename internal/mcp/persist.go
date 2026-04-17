@@ -19,13 +19,19 @@ type fileStore struct {
 	saveMu sync.Mutex
 }
 
+type persistedState struct {
+	Sessions map[string]*sessionState  `json:"sessions"`
+	Apps     map[string]*appState      `json:"apps,omitempty"`
+	Builds   map[string]*appBuildState `json:"builds,omitempty"`
+}
+
 // newFileStore constructs a fileStore rooted at path, pre-loading any
 // sessions persisted from a previous run.  A missing file is not an error
 // (first run).  A malformed file returns an error so the caller can fall back
 // to a plain memStore instead of silently losing data.
 func newFileStore(path string) (sessionStore, error) {
 	fs := &fileStore{
-		memStore: &memStore{sessions: map[string]*sessionState{}},
+		memStore: &memStore{sessions: map[string]*sessionState{}, apps: map[string]*appState{}, builds: map[string]*appBuildState{}},
 		path:     path,
 	}
 	if err := fs.loadFromDisk(); err != nil {
@@ -47,11 +53,31 @@ func (f *fileStore) loadFromDisk() error {
 	if len(data) == 0 {
 		return nil
 	}
-	var loaded map[string]*sessionState
-	if err := json.Unmarshal(data, &loaded); err != nil {
+	var loaded persistedState
+	if err := json.Unmarshal(data, &loaded); err == nil && (loaded.Sessions != nil || loaded.Apps != nil || loaded.Builds != nil) {
+		for id, s := range loaded.Sessions {
+			if s != nil {
+				f.memStore.sessions[id] = s
+			}
+		}
+		for id, app := range loaded.Apps {
+			if app != nil {
+				f.memStore.apps[id] = app
+			}
+		}
+		for id, build := range loaded.Builds {
+			if build != nil {
+				f.memStore.builds[id] = build
+			}
+		}
+		return nil
+	}
+
+	var legacy map[string]*sessionState
+	if err := json.Unmarshal(data, &legacy); err != nil {
 		return fmt.Errorf("stitch: parse sessions %s: %w", f.path, err)
 	}
-	for id, s := range loaded {
+	for id, s := range legacy {
 		if s != nil {
 			f.memStore.sessions[id] = s
 		}
@@ -67,7 +93,12 @@ func (f *fileStore) persist() {
 	defer f.saveMu.Unlock()
 
 	f.memStore.mu.RLock()
-	data, err := json.MarshalIndent(f.memStore.sessions, "", "  ")
+	state := persistedState{
+		Sessions: f.memStore.sessions,
+		Apps:     f.memStore.apps,
+		Builds:   f.memStore.builds,
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
 	f.memStore.mu.RUnlock()
 
 	if err != nil {
@@ -128,4 +159,27 @@ func (f *fileStore) deleteSession(id string) (bool, error) {
 		f.persist()
 	}
 	return ok, err
+}
+
+// createApp delegates to memStore then persists.
+func (f *fileStore) createApp(name string) *appState {
+	app := f.memStore.createApp(name)
+	f.persist()
+	return app
+}
+
+// updateApp delegates to memStore then persists on success.
+func (f *fileStore) updateApp(id string, fn func(*appState) error) (*appState, error) {
+	app, err := f.memStore.updateApp(id, fn)
+	if err == nil {
+		f.persist()
+	}
+	return app, err
+}
+
+// putBuild stores a compiled app build and persists it.
+func (f *fileStore) putBuild(build *appBuildState) *appBuildState {
+	stored := f.memStore.putBuild(build)
+	f.persist()
+	return stored
 }

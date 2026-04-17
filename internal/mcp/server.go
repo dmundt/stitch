@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,6 +44,18 @@ const DefaultSSEEndpoint = DefaultHTTPEndpoint + defaultSSEPath
 
 type app struct {
 	store sessionStore
+}
+
+type emittedFile struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
+}
+
+type exportedProject struct {
+	Files          []emittedFile    `json:"files"`
+	RunCommand     string           `json:"run_command"`
+	GeneratedFiles []string         `json:"generated_files"`
+	Warnings       []map[string]any `json:"warnings"`
 }
 
 func newApp() *app {
@@ -141,6 +154,79 @@ func (a *app) dispatchTool(name string, args map[string]any) (map[string]any, er
 			return nil, err
 		}
 		return a.buildSessionDiagnostics(session), nil
+	case "app.create":
+		created := a.store.createApp(asString(args["name"]))
+		return map[string]any{"app": created}, nil
+	case "app.get":
+		appID := requiredString(args, "app_id")
+		created, err := a.store.getApp(appID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"app": created}, nil
+	case "app.list_routes":
+		appID := requiredString(args, "app_id")
+		created, err := a.store.getApp(appID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"app": created, "routes": created.Routes, "shell": created.Shell}, nil
+	case "app.add_route":
+		return a.toolAppAddRoute(args)
+	case "app.update_route":
+		return a.toolAppUpdateRoute(args)
+	case "app.remove_route":
+		return a.toolAppRemoveRoute(args)
+	case "app.set_shell":
+		return a.toolAppSetShell(args)
+	case "app.validate":
+		appID := requiredString(args, "app_id")
+		created, err := a.store.getApp(appID)
+		if err != nil {
+			return nil, err
+		}
+		warnings := a.appValidationWarnings(created)
+		return map[string]any{"app": created, "valid": len(warnings) == 0, "warnings": warnings}, nil
+	case "app.build":
+		appID := requiredString(args, "app_id")
+		target := requiredString(args, "target")
+		build, err := a.buildAppManifest(appID, target)
+		if err != nil {
+			return nil, err
+		}
+		stored := a.store.putBuild(build)
+		return map[string]any{"build": stored}, nil
+	case "app.get_build":
+		buildID := requiredString(args, "build_id")
+		build, err := a.store.getBuild(buildID)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"build": build}, nil
+	case "app.export":
+		buildID := requiredString(args, "build_id")
+		build, err := a.store.getBuild(buildID)
+		if err != nil {
+			return nil, err
+		}
+		project, err := a.exportBuild(build, asString(args["module_path"]), asString(args["output_mode"]))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"build": build, "project": project}, nil
+	case "app.emit_project":
+		appID := requiredString(args, "app_id")
+		target := requiredString(args, "target")
+		build, err := a.buildAppManifest(appID, target)
+		if err != nil {
+			return nil, err
+		}
+		stored := a.store.putBuild(build)
+		project, err := a.exportBuild(stored, asString(args["module_path"]), asString(args["output_mode"]))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"build": stored, "project": project}, nil
 	case "providers.list":
 		return map[string]any{"providers": listProviders()}, nil
 	case "page.set_meta":
@@ -340,6 +426,131 @@ func (a *app) toolDeleteComponent(args map[string]any) (map[string]any, error) {
 		return nil, err
 	}
 	return map[string]any{"deleted": true, "session": session}, nil
+}
+
+func (a *app) toolAppAddRoute(args map[string]any) (map[string]any, error) {
+	appID := requiredString(args, "app_id")
+	path := requiredString(args, "path")
+	sessionID := requiredString(args, "session_id")
+	block, err := a.validateAppSessionBlock(sessionID, asString(args["block"]))
+	if err != nil {
+		return nil, err
+	}
+	if err := validateAppRoutePath(path); err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	route := appRoute{
+		ID:        randomID("route"),
+		Name:      routeName(asString(args["name"]), path),
+		Path:      path,
+		SessionID: sessionID,
+		Block:     block,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	created, err := a.store.updateApp(appID, func(app *appState) error {
+		if hasRoutePath(app.Routes, route.Path, "") {
+			return fmt.Errorf("duplicate route path: %s", route.Path)
+		}
+		app.Routes = append(app.Routes, route)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"app": created, "route": route}, nil
+}
+
+func (a *app) toolAppUpdateRoute(args map[string]any) (map[string]any, error) {
+	appID := requiredString(args, "app_id")
+	routeID := requiredString(args, "route_id")
+	current, err := a.store.getApp(appID)
+	if err != nil {
+		return nil, err
+	}
+	index := findRouteIndex(current.Routes, routeID)
+	if index < 0 {
+		return nil, fmt.Errorf("unknown route_id: %s", routeID)
+	}
+	route := current.Routes[index]
+	if _, ok := args["path"]; ok {
+		path := requiredString(args, "path")
+		if err := validateAppRoutePath(path); err != nil {
+			return nil, err
+		}
+		if hasRoutePath(current.Routes, path, routeID) {
+			return nil, fmt.Errorf("duplicate route path: %s", path)
+		}
+		route.Path = path
+	}
+	if _, ok := args["session_id"]; ok {
+		route.SessionID = requiredString(args, "session_id")
+	}
+	blockInput := route.Block
+	if _, ok := args["block"]; ok {
+		blockInput = asString(args["block"])
+	}
+	block, err := a.validateAppSessionBlock(route.SessionID, blockInput)
+	if err != nil {
+		return nil, err
+	}
+	route.Block = block
+	if _, ok := args["name"]; ok {
+		route.Name = routeName(asString(args["name"]), route.Path)
+	}
+	route.UpdatedAt = time.Now().UTC()
+
+	created, err := a.store.updateApp(appID, func(app *appState) error {
+		storedIndex := findRouteIndex(app.Routes, routeID)
+		if storedIndex < 0 {
+			return fmt.Errorf("unknown route_id: %s", routeID)
+		}
+		app.Routes[storedIndex] = route
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"app": created, "route_id": routeID}, nil
+}
+
+func (a *app) toolAppRemoveRoute(args map[string]any) (map[string]any, error) {
+	appID := requiredString(args, "app_id")
+	routeID := requiredString(args, "route_id")
+	created, err := a.store.updateApp(appID, func(app *appState) error {
+		index := findRouteIndex(app.Routes, routeID)
+		if index < 0 {
+			return fmt.Errorf("unknown route_id: %s", routeID)
+		}
+		app.Routes = append(app.Routes[:index], app.Routes[index+1:]...)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"app": created, "deleted": true}, nil
+}
+
+func (a *app) toolAppSetShell(args map[string]any) (map[string]any, error) {
+	appID := requiredString(args, "app_id")
+	sessionID := strings.TrimSpace(asString(args["session_id"]))
+	var shell *appShellState
+	if sessionID != "" {
+		block, err := a.validateAppSessionBlock(sessionID, asString(args["block"]))
+		if err != nil {
+			return nil, err
+		}
+		shell = &appShellState{SessionID: sessionID, Block: block}
+	}
+	created, err := a.store.updateApp(appID, func(app *appState) error {
+		app.Shell = shell
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"app": created, "shell": created.Shell}, nil
 }
 
 func deleteSubtree(s *sessionState, rootID string) {
@@ -860,6 +1071,298 @@ func validateHeadSnippet(snippet string) error {
 	return errors.New("head snippet must start with <meta, <link, <style, or <script src=...>")
 }
 
+func (a *app) validateAppSessionBlock(sessionID, block string) (string, error) {
+	if _, err := a.store.getSession(sessionID); err != nil {
+		return "", err
+	}
+	resolved := strings.TrimSpace(block)
+	if resolved == "" {
+		resolved = stitchtpl.BlockMain
+	}
+	if err := stitchtpl.ValidateBlocks([]string{resolved}); err != nil {
+		return "", err
+	}
+	return resolved, nil
+}
+
+func validateAppRoutePath(path string) error {
+	if !strings.HasPrefix(strings.TrimSpace(path), "/") {
+		return fmt.Errorf("route path must start with /: %s", path)
+	}
+	return nil
+}
+
+func hasRoutePath(routes []appRoute, path string, excludeRouteID string) bool {
+	for _, route := range routes {
+		if route.ID == excludeRouteID {
+			continue
+		}
+		if route.Path == path {
+			return true
+		}
+	}
+	return false
+}
+
+func findRouteIndex(routes []appRoute, routeID string) int {
+	for index, route := range routes {
+		if route.ID == routeID {
+			return index
+		}
+	}
+	return -1
+}
+
+func routeName(name, path string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed != "" {
+		return trimmed
+	}
+	if path == "/" {
+		return "index"
+	}
+	trimmed = strings.Trim(strings.TrimSpace(path), "/")
+	trimmed = strings.ReplaceAll(trimmed, "/", "_")
+	if trimmed == "" {
+		return "route"
+	}
+	return trimmed
+}
+
+func (a *app) appValidationWarnings(app *appState) []map[string]any {
+	warnings := []map[string]any{}
+	seenPaths := map[string]int{}
+	for _, route := range app.Routes {
+		seenPaths[route.Path]++
+	}
+	if app.Shell != nil {
+		if _, err := a.store.getSession(app.Shell.SessionID); err != nil {
+			warnings = append(warnings, map[string]any{"scope": "shell", "session_id": app.Shell.SessionID, "reason": "missing-session"})
+		} else if err := stitchtpl.ValidateBlocks([]string{app.Shell.Block}); err != nil {
+			warnings = append(warnings, map[string]any{"scope": "shell", "block": app.Shell.Block, "reason": "invalid-block"})
+		}
+	}
+	for _, route := range app.Routes {
+		if err := validateAppRoutePath(route.Path); err != nil {
+			warnings = append(warnings, map[string]any{"route_id": route.ID, "path": route.Path, "reason": "invalid-path"})
+		}
+		if seenPaths[route.Path] > 1 {
+			warnings = append(warnings, map[string]any{"route_id": route.ID, "path": route.Path, "reason": "duplicate-path"})
+		}
+		if _, err := a.store.getSession(route.SessionID); err != nil {
+			warnings = append(warnings, map[string]any{"route_id": route.ID, "session_id": route.SessionID, "reason": "missing-session"})
+		}
+		if err := stitchtpl.ValidateBlocks([]string{route.Block}); err != nil {
+			warnings = append(warnings, map[string]any{"route_id": route.ID, "block": route.Block, "reason": "invalid-block"})
+		}
+	}
+	return warnings
+}
+
+func (a *app) buildAppManifest(appID, target string) (*appBuildState, error) {
+	if strings.TrimSpace(target) != "go-htmx" {
+		return nil, fmt.Errorf("unsupported build target: %s", target)
+	}
+	created, err := a.store.getApp(appID)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().UTC()
+	build := &appBuildState{
+		ID:           randomID("build"),
+		AppID:        created.ID,
+		Target:       target,
+		Name:         created.Name,
+		Title:        created.Name,
+		Lang:         "en",
+		Provider:     defaultProvider,
+		HeadSnippets: defaultHeadSnippets(),
+		Routes:       make([]appBuildRoute, 0, len(created.Routes)),
+		Warnings:     a.appValidationWarnings(created),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if created.Shell != nil {
+		build.Shell = &appShellState{SessionID: created.Shell.SessionID, Block: created.Shell.Block}
+	}
+	if source := a.buildSourceSession(created); source != nil {
+		build.Title = source.Page.Title
+		build.Lang = source.Page.Lang
+		build.Provider = source.Page.Provider
+		build.HeadSnippets = append([]string{}, source.Page.HeadSnippets...)
+	}
+	for _, route := range created.Routes {
+		build.Routes = append(build.Routes, appBuildRoute{
+			RouteID:   route.ID,
+			Name:      route.Name,
+			Path:      route.Path,
+			SessionID: route.SessionID,
+			Block:     route.Block,
+		})
+	}
+	return build, nil
+}
+
+func (a *app) buildSourceSession(app *appState) *sessionState {
+	if app.Shell != nil {
+		if session, err := a.store.getSession(app.Shell.SessionID); err == nil {
+			return session
+		}
+	}
+	for _, route := range app.Routes {
+		if session, err := a.store.getSession(route.SessionID); err == nil {
+			return session
+		}
+	}
+	return nil
+}
+
+func (a *app) exportBuild(build *appBuildState, modulePath, outputMode string) (*exportedProject, error) {
+	if build == nil {
+		return nil, errors.New("build is nil")
+	}
+	mode := strings.TrimSpace(outputMode)
+	if mode == "" {
+		mode = "files"
+	}
+	if mode != "files" && mode != "bundle" {
+		return nil, fmt.Errorf("unsupported output mode: %s", mode)
+	}
+	module := strings.TrimSpace(modulePath)
+	if module == "" {
+		module = "github.com/dmundt/stitch-generated-app"
+	}
+
+	routes := make([]map[string]string, 0, len(build.Routes))
+	for _, route := range build.Routes {
+		session, err := a.store.getSession(route.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		fullHTML, err := a.renderFull(session)
+		if err != nil {
+			return nil, err
+		}
+		partialHTML, err := a.renderBlock(session, route.Block)
+		if err != nil {
+			return nil, err
+		}
+		routes = append(routes, map[string]string{
+			"name":         route.Name,
+			"path":         route.Path,
+			"partial_path": partialRoutePath(route.Path),
+			"full_html":    fullHTML,
+			"partial_html": partialHTML,
+		})
+	}
+
+	routesJSON := string(toPrettyBytes(map[string]any{"routes": routes}))
+	manifestJSON := string(toPrettyBytes(map[string]any{
+		"build_id":        build.ID,
+		"app_id":          build.AppID,
+		"target":          build.Target,
+		"module_path":     module,
+		"generated_at":    time.Now().UTC().Format(time.RFC3339),
+		"generated_files": []string{"go.mod", "main.go", "internal/web/server.go", "stitch/routes.json", "stitch/manifest.json"},
+	}))
+
+	files := []emittedFile{
+		{Path: "go.mod", Content: renderGoMod(module)},
+		{Path: "main.go", Content: renderGeneratedMain(module)},
+		{Path: "internal/web/server.go", Content: renderGeneratedServer(routes)},
+		{Path: "stitch/routes.json", Content: routesJSON + "\n"},
+		{Path: "stitch/manifest.json", Content: manifestJSON + "\n"},
+	}
+	generated := make([]string, 0, len(files))
+	for _, file := range files {
+		generated = append(generated, file.Path)
+	}
+
+	return &exportedProject{
+		Files:          files,
+		RunCommand:     "go run .",
+		GeneratedFiles: generated,
+		Warnings:       append([]map[string]any{}, build.Warnings...),
+	}, nil
+}
+
+func partialRoutePath(routePath string) string {
+	trimmed := strings.TrimSpace(routePath)
+	if trimmed == "" || trimmed == "/" {
+		return "/partials"
+	}
+	return "/partials" + trimmed
+}
+
+func renderGoMod(modulePath string) string {
+	return fmt.Sprintf("module %s\n\ngo 1.22\n\nrequire github.com/dmundt/stitch v1.1.9\n", modulePath)
+}
+
+func renderGeneratedMain(modulePath string) string {
+	return fmt.Sprintf(`package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"%s/internal/web"
+)
+
+func main() {
+	addr := ":8080"
+	if env := os.Getenv("ADDR"); env != "" {
+		addr = env
+	}
+	log.Printf("stitch generated app listening on %%s", addr)
+	if err := http.ListenAndServe(addr, web.NewHandler()); err != nil {
+		log.Fatal(err)
+	}
+}
+`, modulePath)
+}
+
+func renderGeneratedServer(routes []map[string]string) string {
+	var b strings.Builder
+	b.WriteString("package web\n\n")
+	b.WriteString("import (\n\t\"net/http\"\n\t\"strconv\"\n\n\t\"github.com/dmundt/stitch/css\"\n)\n\n")
+	b.WriteString("type routeSpec struct {\n\tPath string\n\tPartialPath string\n\tFullHTML string\n\tPartialHTML string\n}\n\n")
+	b.WriteString("var routeTable = []routeSpec{\n")
+	for _, route := range routes {
+		b.WriteString("\t{\n")
+		b.WriteString("\t\tPath: " + strconv.Quote(route["path"]) + ",\n")
+		b.WriteString("\t\tPartialPath: " + strconv.Quote(route["partial_path"]) + ",\n")
+		b.WriteString("\t\tFullHTML: " + strconv.Quote(route["full_html"]) + ",\n")
+		b.WriteString("\t\tPartialHTML: " + strconv.Quote(route["partial_html"]) + ",\n")
+		b.WriteString("\t},\n")
+	}
+	b.WriteString("}\n\n")
+	b.WriteString(`func NewHandler() http.Handler {
+	mux := http.NewServeMux()
+	if assets, err := css.Assets(); err == nil {
+		mux.Handle("/assets/", http.StripPrefix("/assets/", http.FileServer(http.FS(assets))))
+	}
+	for _, route := range routeTable {
+		r := route
+		mux.HandleFunc(r.Path, func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			if req.Header.Get("HX-Request") == "true" {
+				_, _ = w.Write([]byte(r.PartialHTML))
+				return
+			}
+			_, _ = w.Write([]byte(r.FullHTML))
+		})
+		mux.HandleFunc(r.PartialPath, func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(r.PartialHTML))
+		})
+	}
+	return mux
+}
+`)
+	return b.String()
+}
+
 func randomID(prefix string) string {
 	return fmt.Sprintf("%s_%d_%d", prefix, time.Now().UnixNano(), rand.Intn(100000))
 }
@@ -1370,6 +1873,18 @@ func componentSchemas() map[string]map[string]any {
 
 func mcpTools() []map[string]any {
 	return []map[string]any{
+		toolDef("app_create", "Create an app container for routes and export", []string{"name"}),
+		toolDef("app_get", "Get app state", []string{"app_id"}),
+		toolDef("app_list_routes", "List routes configured for an app", []string{"app_id"}),
+		toolDef("app_add_route", "Add a route that maps to a session and block", []string{"app_id", "name", "path", "session_id", "block"}),
+		toolDef("app_update_route", "Update a configured app route", []string{"app_id", "route_id", "name", "path", "session_id", "block"}),
+		toolDef("app_remove_route", "Remove a route from an app", []string{"app_id", "route_id"}),
+		toolDef("app_set_shell", "Set or clear the shell session for an app", []string{"app_id", "session_id", "block"}),
+		toolDef("app_validate", "Validate app route and shell references", []string{"app_id"}),
+		toolDef("app_build", "Compile an app into a go-htmx build manifest", []string{"app_id", "target"}),
+		toolDef("app_get_build", "Get a compiled app build manifest", []string{"build_id"}),
+		toolDef("app_export", "Export build artifact into generated project files", []string{"build_id", "module_path", "output_mode"}),
+		toolDef("app_emit_project", "One-shot build and export of a generated project", []string{"app_id", "target", "module_path", "output_mode"}),
 		toolDef("session_create", "Create a UI authoring session", []string{"title", "provider"}),
 		toolDef("session_get", "Get session state", []string{"session_id"}),
 		toolDef("session_reset", "Reset session components and blocks", []string{"session_id"}),
@@ -1462,6 +1977,30 @@ func normalizeToolName(name string) string {
 	switch name {
 	case "session_create":
 		return "session.create"
+	case "app_create":
+		return "app.create"
+	case "app_get":
+		return "app.get"
+	case "app_list_routes":
+		return "app.list_routes"
+	case "app_add_route":
+		return "app.add_route"
+	case "app_update_route":
+		return "app.update_route"
+	case "app_remove_route":
+		return "app.remove_route"
+	case "app_set_shell":
+		return "app.set_shell"
+	case "app_validate":
+		return "app.validate"
+	case "app_build":
+		return "app.build"
+	case "app_get_build":
+		return "app.get_build"
+	case "app_export":
+		return "app.export"
+	case "app_emit_project":
+		return "app.emit_project"
 	case "session_get":
 		return "session.get"
 	case "session_reset":

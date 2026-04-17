@@ -349,6 +349,282 @@ func mustCreateSession(t *testing.T, a *app) string {
 	return s.ID
 }
 
+func mustCreateApp(t *testing.T, a *app) string {
+	t.Helper()
+	res, err := a.safeDispatch("app.create", map[string]any{})
+	if err != nil {
+		t.Fatalf("app.create failed: %v", err)
+	}
+	created := res["app"].(*appState)
+	if created.ID == "" {
+		t.Fatal("app id is empty")
+	}
+	return created.ID
+}
+
+func TestAppCreateAndGet(t *testing.T) {
+	a := newApp()
+	appID := mustCreateApp(t, a)
+
+	res, err := a.safeDispatch("app.get", map[string]any{"app_id": appID})
+	if err != nil {
+		t.Fatalf("app.get failed: %v", err)
+	}
+	created := res["app"].(*appState)
+	if created.ID != appID {
+		t.Fatalf("expected app ID %q, got %q", appID, created.ID)
+	}
+	if created.Name == "" {
+		t.Fatal("expected non-empty app name")
+	}
+}
+
+func TestAppRouteLifecycle(t *testing.T) {
+	a := newApp()
+	appID := mustCreateApp(t, a)
+	sessionID := mustCreateSession(t, a)
+
+	addRes, err := a.safeDispatch("app.add_route", map[string]any{
+		"app_id":     appID,
+		"path":       "/vehicles",
+		"session_id": sessionID,
+		"block":      "main",
+	})
+	if err != nil {
+		t.Fatalf("app.add_route failed: %v", err)
+	}
+	route := addRes["route"].(appRoute)
+	if route.Path != "/vehicles" || route.Block != "main" {
+		t.Fatalf("unexpected route: %+v", route)
+	}
+
+	listRes, err := a.safeDispatch("app.list_routes", map[string]any{"app_id": appID})
+	if err != nil {
+		t.Fatalf("app.list_routes failed: %v", err)
+	}
+	routes := listRes["routes"].([]appRoute)
+	if len(routes) != 1 || routes[0].ID != route.ID {
+		t.Fatalf("unexpected routes after add: %+v", routes)
+	}
+
+	_, err = a.safeDispatch("app.update_route", map[string]any{
+		"app_id":   appID,
+		"route_id": route.ID,
+		"name":     "fleet",
+		"path":     "/fleet",
+	})
+	if err != nil {
+		t.Fatalf("app.update_route failed: %v", err)
+	}
+
+	getRes, err := a.safeDispatch("app.get", map[string]any{"app_id": appID})
+	if err != nil {
+		t.Fatalf("app.get failed: %v", err)
+	}
+	updated := getRes["app"].(*appState)
+	if len(updated.Routes) != 1 || updated.Routes[0].Path != "/fleet" || updated.Routes[0].Name != "fleet" {
+		t.Fatalf("unexpected route after update: %+v", updated.Routes)
+	}
+
+	removeRes, err := a.safeDispatch("app.remove_route", map[string]any{"app_id": appID, "route_id": route.ID})
+	if err != nil {
+		t.Fatalf("app.remove_route failed: %v", err)
+	}
+	if removeRes["deleted"] != true {
+		t.Fatalf("expected deleted=true, got %v", removeRes["deleted"])
+	}
+}
+
+func TestAppSetShellAndValidate(t *testing.T) {
+	a := newApp()
+	appID := mustCreateApp(t, a)
+	sessionID := mustCreateSession(t, a)
+
+	_, err := a.safeDispatch("app.set_shell", map[string]any{"app_id": appID, "session_id": sessionID, "block": "main"})
+	if err != nil {
+		t.Fatalf("app.set_shell failed: %v", err)
+	}
+	_, err = a.safeDispatch("app.add_route", map[string]any{"app_id": appID, "path": "/", "session_id": sessionID})
+	if err != nil {
+		t.Fatalf("app.add_route failed: %v", err)
+	}
+
+	validRes, err := a.safeDispatch("app.validate", map[string]any{"app_id": appID})
+	if err != nil {
+		t.Fatalf("app.validate failed: %v", err)
+	}
+	if validRes["valid"] != true {
+		t.Fatalf("expected valid app, got %v with warnings %v", validRes["valid"], validRes["warnings"])
+	}
+
+	_, err = a.safeDispatch("session.delete", map[string]any{"session_id": sessionID})
+	if err != nil {
+		t.Fatalf("session.delete failed: %v", err)
+	}
+
+	invalidRes, err := a.safeDispatch("app.validate", map[string]any{"app_id": appID})
+	if err != nil {
+		t.Fatalf("app.validate after delete failed: %v", err)
+	}
+	if invalidRes["valid"] != false {
+		t.Fatalf("expected invalid app after deleting referenced session, got %v", invalidRes["valid"])
+	}
+	warnings := invalidRes["warnings"].([]map[string]any)
+	if len(warnings) == 0 {
+		t.Fatal("expected validation warnings after deleting referenced session")
+	}
+}
+
+func TestAppRouteValidationRejectsBadInput(t *testing.T) {
+	a := newApp()
+	appID := mustCreateApp(t, a)
+	sessionID := mustCreateSession(t, a)
+
+	_, err := a.safeDispatch("app.add_route", map[string]any{"app_id": appID, "path": "vehicles", "session_id": sessionID})
+	if err == nil {
+		t.Fatal("expected invalid path error")
+	}
+
+	_, err = a.safeDispatch("app.add_route", map[string]any{"app_id": appID, "path": "/vehicles", "session_id": sessionID})
+	if err != nil {
+		t.Fatalf("app.add_route initial add failed: %v", err)
+	}
+	_, err = a.safeDispatch("app.add_route", map[string]any{"app_id": appID, "path": "/vehicles", "session_id": sessionID})
+	if err == nil {
+		t.Fatal("expected duplicate path error")
+	}
+	_, err = a.safeDispatch("app.set_shell", map[string]any{"app_id": appID, "session_id": sessionID, "block": "sidebar"})
+	if err == nil {
+		t.Fatal("expected invalid shell block error")
+	}
+}
+
+func TestAppBuildAndGetBuild(t *testing.T) {
+	a := newApp()
+	appID := mustCreateApp(t, a)
+	sessionID := mustCreateSession(t, a)
+
+	_, err := a.safeDispatch("app.set_shell", map[string]any{"app_id": appID, "session_id": sessionID, "block": "main"})
+	if err != nil {
+		t.Fatalf("app.set_shell failed: %v", err)
+	}
+	_, err = a.safeDispatch("app.add_route", map[string]any{"app_id": appID, "path": "/overview", "session_id": sessionID, "name": "overview"})
+	if err != nil {
+		t.Fatalf("app.add_route failed: %v", err)
+	}
+
+	buildRes, err := a.safeDispatch("app.build", map[string]any{"app_id": appID, "target": "go-htmx"})
+	if err != nil {
+		t.Fatalf("app.build failed: %v", err)
+	}
+	build := buildRes["build"].(*appBuildState)
+	if build.AppID != appID || build.Target != "go-htmx" {
+		t.Fatalf("unexpected build metadata: %+v", build)
+	}
+	if build.Shell == nil || build.Shell.SessionID != sessionID {
+		t.Fatalf("expected shell session in build, got %+v", build.Shell)
+	}
+	if len(build.Routes) != 1 || build.Routes[0].Path != "/overview" {
+		t.Fatalf("unexpected build routes: %+v", build.Routes)
+	}
+	if len(build.HeadSnippets) == 0 {
+		t.Fatal("expected build to inherit head snippets")
+	}
+
+	getBuildRes, err := a.safeDispatch("app.get_build", map[string]any{"build_id": build.ID})
+	if err != nil {
+		t.Fatalf("app.get_build failed: %v", err)
+	}
+	reloaded := getBuildRes["build"].(*appBuildState)
+	if reloaded.ID != build.ID || len(reloaded.Routes) != 1 {
+		t.Fatalf("unexpected reloaded build: %+v", reloaded)
+	}
+
+	_, err = a.safeDispatch("app.build", map[string]any{"app_id": appID, "target": "unknown-target"})
+	if err == nil {
+		t.Fatal("expected unsupported build target error")
+	}
+}
+
+func TestAppExport(t *testing.T) {
+	a := newApp()
+	appID := mustCreateApp(t, a)
+	sessionID := mustCreateSession(t, a)
+
+	_, err := a.safeDispatch("app.add_route", map[string]any{"app_id": appID, "path": "/", "session_id": sessionID, "name": "home"})
+	if err != nil {
+		t.Fatalf("app.add_route failed: %v", err)
+	}
+	buildRes, err := a.safeDispatch("app.build", map[string]any{"app_id": appID, "target": "go-htmx"})
+	if err != nil {
+		t.Fatalf("app.build failed: %v", err)
+	}
+	build := buildRes["build"].(*appBuildState)
+
+	exportRes, err := a.safeDispatch("app.export", map[string]any{"build_id": build.ID, "module_path": "example.com/generated/app"})
+	if err != nil {
+		t.Fatalf("app.export failed: %v", err)
+	}
+	project := exportRes["project"].(*exportedProject)
+	if project.RunCommand != "go run ." {
+		t.Fatalf("unexpected run command: %q", project.RunCommand)
+	}
+	if len(project.Files) == 0 {
+		t.Fatal("expected exported files")
+	}
+	seen := map[string]string{}
+	for _, file := range project.Files {
+		seen[file.Path] = file.Content
+	}
+	for _, expected := range []string{"go.mod", "main.go", "internal/web/server.go", "stitch/routes.json", "stitch/manifest.json"} {
+		if _, ok := seen[expected]; !ok {
+			t.Fatalf("missing exported file %q", expected)
+		}
+	}
+	if !strings.Contains(seen["go.mod"], "module example.com/generated/app") {
+		t.Fatalf("unexpected go.mod content: %s", seen["go.mod"])
+	}
+	if !strings.Contains(seen["go.mod"], "require github.com/dmundt/stitch") {
+		t.Fatalf("expected go.mod to require stitch module: %s", seen["go.mod"])
+	}
+	if !strings.Contains(seen["internal/web/server.go"], "HX-Request") {
+		t.Fatalf("expected generated server to include HX branching: %s", seen["internal/web/server.go"])
+	}
+	if !strings.Contains(seen["internal/web/server.go"], "github.com/dmundt/stitch/css") || !strings.Contains(seen["internal/web/server.go"], "css.Assets") {
+		t.Fatalf("expected generated server to use stitch css assets: %s", seen["internal/web/server.go"])
+	}
+
+	_, err = a.safeDispatch("app.export", map[string]any{"build_id": build.ID, "output_mode": "zip"})
+	if err == nil {
+		t.Fatal("expected unsupported output_mode error")
+	}
+}
+
+func TestAppEmitProject(t *testing.T) {
+	a := newApp()
+	appID := mustCreateApp(t, a)
+	sessionID := mustCreateSession(t, a)
+
+	_, err := a.safeDispatch("app.add_route", map[string]any{"app_id": appID, "path": "/overview", "session_id": sessionID, "name": "overview"})
+	if err != nil {
+		t.Fatalf("app.add_route failed: %v", err)
+	}
+	res, err := a.safeDispatch("app.emit_project", map[string]any{"app_id": appID, "target": "go-htmx"})
+	if err != nil {
+		t.Fatalf("app.emit_project failed: %v", err)
+	}
+	if _, ok := res["build"].(*appBuildState); !ok {
+		t.Fatalf("expected build in response, got %T", res["build"])
+	}
+	project, ok := res["project"].(*exportedProject)
+	if !ok {
+		t.Fatalf("expected project in response, got %T", res["project"])
+	}
+	if len(project.GeneratedFiles) == 0 {
+		t.Fatal("expected generated file list")
+	}
+}
+
 func TestSessionDelete(t *testing.T) {
 	a := newApp()
 	sessionID := mustCreateSession(t, a)
@@ -920,6 +1196,18 @@ func TestNormalizeToolName(t *testing.T) {
 		want  string
 	}{
 		{"session_create", "session.create"},
+		{"app_create", "app.create"},
+		{"app_get", "app.get"},
+		{"app_list_routes", "app.list_routes"},
+		{"app_add_route", "app.add_route"},
+		{"app_update_route", "app.update_route"},
+		{"app_remove_route", "app.remove_route"},
+		{"app_set_shell", "app.set_shell"},
+		{"app_validate", "app.validate"},
+		{"app_build", "app.build"},
+		{"app_get_build", "app.get_build"},
+		{"app_export", "app.export"},
+		{"app_emit_project", "app.emit_project"},
 		{"session_get", "session.get"},
 		{"session_reset", "session.reset"},
 		{"session_delete", "session.delete"},
