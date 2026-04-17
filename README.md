@@ -172,7 +172,7 @@ Stitch currently implements constructor-based component types for:
 
 Stitch core never hardcodes external CSS frameworks. It ships generic provider infrastructure and includes two built-in providers: `none` (baseline) and `stitch` (built-in default stitch style — flat geometry, restrained borders, readability-first typography).
 
-Framework-specific external providers are defined by applications (the demo app registers minstyle.io and Milligram in [sample/server/providers.go](sample/server/providers.go)).
+Framework-specific external providers are defined by applications (the demo app registers minstyle.io and Milligram in [internal/demo/providers.go](internal/demo/providers.go)).
 
 Register custom providers in your own app using `css.NewStaticProvider` and `css.Register`.
 
