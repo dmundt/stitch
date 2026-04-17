@@ -27,3 +27,30 @@ func TestValidateBlocks(t *testing.T) {
 		t.Fatal("expected validation error for invalid block")
 	}
 }
+
+func TestValidateBlocksEmpty(t *testing.T) {
+	if err := ValidateBlocks([]string{}); err != nil {
+		t.Fatalf("empty block list should be valid: %v", err)
+	}
+}
+
+func TestIsValidBlock(t *testing.T) {
+	for _, name := range []string{BlockHeader, BlockMain, BlockFooter} {
+		if !IsValidBlock(name) {
+			t.Fatalf("expected %q to be a valid block", name)
+		}
+	}
+	if IsValidBlock("sidebar") {
+		t.Fatal("expected 'sidebar' to be invalid")
+	}
+	if IsValidBlock("") {
+		t.Fatal("expected empty string to be invalid")
+	}
+}
+
+func TestSortByBlockOrderInvalidBlock(t *testing.T) {
+	err := SortByBlockOrder([]string{BlockHeader, "bogus"})
+	if err == nil {
+		t.Fatal("expected error for invalid block in sort")
+	}
+}

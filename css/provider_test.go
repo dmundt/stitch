@@ -58,3 +58,37 @@ func TestRegisterValidation(t *testing.T) {
 		t.Fatal("expected missing name error")
 	}
 }
+
+func TestAssets(t *testing.T) {
+	fs, err := Assets()
+	if err != nil {
+		t.Fatalf("Assets() returned error: %v", err)
+	}
+	if fs == nil {
+		t.Fatal("expected non-nil filesystem")
+	}
+	f, err := fs.Open("stitch.css")
+	if err != nil {
+		t.Fatalf("expected stitch.css in assets: %v", err)
+	}
+	_ = f.Close()
+}
+
+func TestMustRegisterPanicsOnNil(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Fatal("expected MustRegister(nil) to panic")
+		}
+	}()
+	MustRegister(nil)
+}
+
+func TestGetUnknownProvider(t *testing.T) {
+	_, err := Get("absolutely-unknown-provider")
+	if err == nil {
+		t.Fatal("expected error for unknown provider")
+	}
+	if !strings.Contains(err.Error(), "unknown provider") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
