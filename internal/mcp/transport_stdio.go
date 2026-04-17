@@ -65,6 +65,16 @@ func readRPCMessage(r *bufio.Reader) (rpcRequest, error) {
 			}
 			break
 		}
+
+		trimmed := strings.TrimSpace(line)
+		if contentLen < 0 && strings.HasPrefix(trimmed, "{") {
+			var req rpcRequest
+			if err := json.Unmarshal([]byte(trimmed), &req); err != nil {
+				return rpcRequest{}, err
+			}
+			return req, nil
+		}
+
 		lower := strings.ToLower(line)
 		if strings.HasPrefix(lower, "content-length:") {
 			raw := strings.TrimSpace(line[len("content-length:"):])
