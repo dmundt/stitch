@@ -11,6 +11,12 @@ import (
 
 type testComponent struct{ html string }
 
+func TestDocumentTemplateSourceEmbedded(t *testing.T) {
+	if !strings.Contains(documentTemplateSource, "<!doctype html>") {
+		t.Fatalf("expected embedded document template source, got %q", documentTemplateSource)
+	}
+}
+
 func TestGuiAliasesForComponents(t *testing.T) {
 	p := NewWindow("Component Workspace")
 	p.TopBarComponent(testComponent{html: `<nav>top component</nav>`})
@@ -238,4 +244,3 @@ func TestRenderWithProviderAndBlocks(t *testing.T) {
 }
 
 func (c testComponent) HTML() string { return c.html }
-

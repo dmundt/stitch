@@ -24,7 +24,7 @@ func TestRegisteredToolsIncludesCoreCalls(t *testing.T) {
 		seen[tool.Name] = true
 	}
 
-	for _, expected := range []string{"session_create", "session_diagnostics", "ui_create_component", "render_full"} {
+	for _, expected := range []string{"app_create", "app_add_route", "app_build", "app_get_build", "app_export", "app_emit_project", "session_create", "session_diagnostics", "ui_create_component", "render_full"} {
 		if !seen[expected] {
 			t.Fatalf("missing expected tool registration: %s", expected)
 		}

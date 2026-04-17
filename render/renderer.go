@@ -2,30 +2,24 @@ package render
 
 import (
 	"bytes"
+	_ "embed"
 	"errors"
 	"html/template"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 
 	"github.com/dmundt/stitch/css"
 	stitchtpl "github.com/dmundt/stitch/template"
 )
 
+//go:embed document.gohtml
+var documentTemplateSource string
+
 func mustLoadDocumentTemplate() *template.Template {
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		panic("render: cannot determine renderer.go path")
+	if documentTemplateSource == "" {
+		panic("render: embedded document template is empty")
 	}
 
-	templatePath := filepath.Join(filepath.Dir(currentFile), "document.gohtml")
-	data, err := os.ReadFile(templatePath)
-	if err != nil {
-		panic(err)
-	}
-
-	return template.Must(template.New("doc").Parse(string(data)))
+	return template.Must(template.New("doc").Parse(documentTemplateSource))
 }
 
 var (
