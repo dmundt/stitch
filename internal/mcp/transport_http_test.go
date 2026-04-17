@@ -85,6 +85,26 @@ func TestHandleSessionHTTPComponent(t *testing.T) {
 	}
 }
 
+func TestHandleSessionHTTPDiagnostics(t *testing.T) {
+	a, sessionID := newTestAppWithSession(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/sessions/"+sessionID+"/diagnostics", nil)
+	w := httptest.NewRecorder()
+	a.handleSessionHTTP(w, req)
+
+	resp := w.Result()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d", resp.StatusCode)
+	}
+	if !strings.Contains(resp.Header.Get("Content-Type"), "application/json") {
+		t.Fatalf("expected JSON content type, got %q", resp.Header.Get("Content-Type"))
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "head_summary") {
+		t.Fatalf("expected diagnostics payload, got: %s", body)
+	}
+}
+
 func TestHandleSessionHTTPMethodNotAllowed(t *testing.T) {
 	a, sessionID := newTestAppWithSession(t)
 
