@@ -15,10 +15,11 @@ const (
 	PathLogo     = "/branding/stitch.svg"
 	PathLogoMono = "/branding/stitch-mono.svg"
 	PathMark     = "/branding/stitch-mark.svg"
+	PathMarkMono = "/branding/stitch-mark-mono.svg"
 	PathFavicon  = "/favicon.svg"
 )
 
-//go:embed stitch-logo.svg stitch-logo-mono.svg stitch-mark.svg
+//go:embed stitch-logo.svg stitch-logo-mono.svg stitch-mark.svg stitch-mark-mono.svg
 var assets embed.FS
 
 func LogoSVG() []byte {
@@ -33,6 +34,11 @@ func LogoMonoSVG() []byte {
 
 func MarkSVG() []byte {
 	b, _ := assets.ReadFile("stitch-mark.svg")
+	return b
+}
+
+func MarkMonoSVG() []byte {
+	b, _ := assets.ReadFile("stitch-mark-mono.svg")
 	return b
 }
 
@@ -67,6 +73,13 @@ func MountRoutes(mux *http.ServeMux) {
 			return
 		}
 		serveSVG(w, MarkSVG())
+	})
+	mux.HandleFunc(PathMarkMono, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		serveSVG(w, MarkMonoSVG())
 	})
 	mux.HandleFunc(PathFavicon, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
