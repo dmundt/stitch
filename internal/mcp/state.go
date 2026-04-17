@@ -35,16 +35,24 @@ type sessionState struct {
 	UpdatedAt  time.Time                 `json:"updated_at"`
 }
 
-type stateStore struct {
+// sessionStore is the interface for session lifecycle management.
+type sessionStore interface {
+	createSession(title, provider string) *sessionState
+	getSession(id string) (*sessionState, error)
+	updateSession(id string, fn func(*sessionState) error) (*sessionState, error)
+	deleteSession(id string) (bool, error)
+}
+
+type memStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*sessionState
 }
 
-func newStore() *stateStore {
-	return &stateStore{sessions: map[string]*sessionState{}}
+func newStore() sessionStore {
+	return &memStore{sessions: map[string]*sessionState{}}
 }
 
-func (s *stateStore) createSession(title, provider string) *sessionState {
+func (s *memStore) createSession(title, provider string) *sessionState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -77,7 +85,7 @@ func (s *stateStore) createSession(title, provider string) *sessionState {
 	return cloneSession(session)
 }
 
-func (s *stateStore) getSession(id string) (*sessionState, error) {
+func (s *memStore) getSession(id string) (*sessionState, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	session, ok := s.sessions[id]
@@ -87,7 +95,7 @@ func (s *stateStore) getSession(id string) (*sessionState, error) {
 	return cloneSession(session), nil
 }
 
-func (s *stateStore) updateSession(id string, fn func(*sessionState) error) (*sessionState, error) {
+func (s *memStore) updateSession(id string, fn func(*sessionState) error) (*sessionState, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	session, ok := s.sessions[id]
@@ -101,7 +109,7 @@ func (s *stateStore) updateSession(id string, fn func(*sessionState) error) (*se
 	return cloneSession(session), nil
 }
 
-func (s *stateStore) deleteSession(id string) (bool, error) {
+func (s *memStore) deleteSession(id string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.sessions[id]; !ok {
